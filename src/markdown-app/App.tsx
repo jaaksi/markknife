@@ -53,7 +53,7 @@ interface OpenTab {
 function MarkdownAppInner() {
   const [tabs, setTabs] = useState<OpenTab[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
-  const [mode, setMode] = useState<AppMode>('view')
+  const [mode, setMode] = useState<AppMode>('wysiwyg')
   const [settingsOpen, setSettingsOpen] = useState(false)
   // 保存结果反馈(界面内 toast):成功「已保存」/ 失败显示错误。
   const [saveFeedback, setSaveFeedback] = useState<{ kind: 'saved' | 'error'; text: string } | null>(null)
@@ -136,7 +136,8 @@ function MarkdownAppInner() {
           : [...prev, { path, name: basenameOf(path), content, dirty: false }],
       )
       setActivePath(path)
-      setMode('view')
+      // 打开文件默认进入「所见即所得」模式。
+      setMode('wysiwyg')
       recordRecent(path, basenameOf(path))
     },
     [recordRecent],
