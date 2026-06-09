@@ -95,8 +95,9 @@ export function StartPage({ recents, onOpen, onNew, onOpenRecent, onRemoveRecent
   const isSearchEmpty = isEmpty && query.trim().length > 0
 
   return (
-    <div className="flex flex-1 justify-center overflow-y-auto">
-      <div className="flex w-full max-w-[600px] flex-col px-8 pt-11 pb-15">
+    // 顶部品牌/操作/搜索/区块标题固定,仅「最近打开」列表区域滚动。
+    <div className="flex min-h-0 flex-1 justify-center">
+      <div className="flex min-h-0 w-full max-w-[600px] flex-col px-8 pt-11">
         {/* 品牌头 */}
         <div className="mb-[26px] flex flex-col items-center gap-3 text-center">
           <div className="flex size-14 items-center justify-center rounded-[15px] bg-[linear-gradient(135deg,#5b86ff,#8b5cf6)] text-white shadow-[0_8px_22px_rgba(91,134,255,0.35)]">
@@ -130,7 +131,7 @@ export function StartPage({ recents, onOpen, onNew, onOpenRecent, onRemoveRecent
         </div>
 
         {/* 搜索 */}
-        <div className="mb-[18px] flex h-10 items-center gap-2 rounded-[10px] border border-border bg-background pr-2.5 pl-3 transition-colors focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+        <div className="mb-[18px] flex h-11 items-center gap-2 rounded-[10px] border border-border bg-background pr-2.5 pl-3 transition-colors focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
           <span className="size-4 shrink-0 text-muted-foreground/70">{SearchIcon}</span>
           <Input
             type="text"
@@ -180,7 +181,8 @@ export function StartPage({ recents, onOpen, onNew, onOpenRecent, onRemoveRecent
           )}
         </div>
 
-        {/* 列表 / 空状态 */}
+        {/* 列表 / 空状态 —— 仅此区域滚动,底部留白随内容一起滚 */}
+        <div className="min-h-0 flex-1 overflow-y-auto pb-15">
         {isEmpty ? (
           <div className="flex flex-col items-center gap-2.5 px-5 py-12 text-center text-muted-foreground">
             <div className="flex size-[52px] items-center justify-center rounded-[14px] bg-muted text-muted-foreground/70">
@@ -247,6 +249,7 @@ export function StartPage({ recents, onOpen, onNew, onOpenRecent, onRemoveRecent
             ))}
           </div>
         )}
+        </div>
       </div>
     </div>
   )

@@ -91,7 +91,7 @@ export function Toolbar({
           <FolderIcon className="size-[17px]" />
         </ToolbarIconButton>
 
-        {hasTabs ? (
+        {hasTabs && (
           <TabBar
             tabs={tabs}
             activePath={activePath}
@@ -100,11 +100,6 @@ export function Toolbar({
             onNew={onNewTab}
             actions={tabActions}
           />
-        ) : (
-          // 无文件:起始页品牌名(对齐设计稿)
-          <span className="text-[13px] font-semibold text-muted-foreground" data-testid="markdown-filename">
-            {t('toolbar.startPage')}
-          </span>
         )}
 
         {/* 中间可拖拽空白(自定义窗口拖动)+ 标签栏与模式组的安全间距 */}

@@ -1,0 +1,12 @@
+/* 文档内查找高亮(CSS Custom Highlight API)。
+   单独成文件、经 Vite 默认(esbuild)CSS 管线处理——不走 index.css 的 Tailwind/lightningcss
+   优化,后者尚不识别 ::highlight() 伪元素,会在打包时刷无意义的告警。
+   全部匹配:淡黄底;当前匹配:橙底深字。基于 Range 高亮,不修改 DOM。 */
+::highlight(mk-search) {
+  background-color: rgba(255, 213, 0, 0.4);
+}
+
+::highlight(mk-search-active) {
+  background-color: #ff9632;
+  color: #1a1a1a;
+}

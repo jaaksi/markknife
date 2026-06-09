@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+// 查找高亮的 ::highlight() 样式单独成文件,避免走 index.css 的 Tailwind/lightningcss 优化(打包告警)。
+import './searchHighlight.css'
 
 /** 富文本表面的滚动容器(查看 / 所见即所得 / 分栏预览共用),与 useTocHeadings 一致。 */
 const SCROLL_AREA_SELECTOR = '.editor-scroll-area'
