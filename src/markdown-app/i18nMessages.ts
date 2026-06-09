@@ -228,6 +228,9 @@ const zhCN = {
   'content.imageAlt': '描述',
   'content.tableTemplate': '\n| 列 1 | 列 2 |\n| --- | --- |\n| 单元格 | 单元格 |\n',
   'content.untitledFile': '未命名.md',
+
+  // —— 编辑器内交互 ——
+  'editor.codeBlock.copied': '已复制',
 } as const
 
 /** 翻译键 = 简体中文目录的键。 */
@@ -453,6 +456,9 @@ const en: Record<MessageKey, string> = {
   'content.imageAlt': 'description',
   'content.tableTemplate': '\n| Column 1 | Column 2 |\n| --- | --- |\n| Cell | Cell |\n',
   'content.untitledFile': 'Untitled.md',
+
+  // —— Editor interactions ——
+  'editor.codeBlock.copied': 'Copied',
 }
 
 const MESSAGES: Record<Language, Record<MessageKey, string>> = {

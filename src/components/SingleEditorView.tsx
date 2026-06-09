@@ -25,6 +25,8 @@ import { useEditorTheme } from '../hooks/useTheme'
 import { useImageDrop } from '../hooks/useImageDrop'
 import { useImageLightbox } from '../hooks/useImageLightbox'
 import { createTranslator, type AppLocale } from '../lib/i18n'
+// 代码块「已复制」反馈文案走 markknife 自带 i18n(随界面语言),与项目「新增文案进 i18nMessages」约定一致。
+import { t as tMessage } from '../markdown-app/i18nMessages'
 import { writeClipboardText } from '../utils/clipboardText'
 import { searchEmojis, type EmojiEntry } from '../utils/emoji'
 import { observeNativeTextAssistanceDisabled } from '../lib/nativeTextAssistance'
@@ -44,7 +46,7 @@ import { MarkknifeSideMenu } from './markknifeBlockNoteSideMenu'
 import { useEditorLinkActivation } from './useEditorLinkActivation'
 import { findNearestTextCursorBlock } from './blockNoteCursorTarget'
 import { ImageLightbox } from './ImageLightbox'
-import { ActionTooltip } from './ui/action-tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import { Button } from './ui/button'
 import { subscribeRichEditorExternalChange } from './editorExternalChangeEvents'
 import {
@@ -476,10 +478,13 @@ function useCodeBlockCopyTarget(containerRef: React.RefObject<HTMLDivElement | n
 }
 
 function CodeBlockCopyButton({ copyTarget, locale }: { copyTarget: CodeBlockCopyTarget; locale: AppLocale }) {
+  // active:图标填充态(悬停/聚焦/刚复制);copied:点击复制后短暂弹出的「已复制」气泡。
   const [active, setActive] = useState(false)
+  const [copied, setCopied] = useState(false)
   const resetTimerRef = useRef<number | null>(null)
   const t = useMemo(() => createTranslator(locale), [locale])
   const label = t('editor.codeBlock.copy')
+  const copiedLabel = tMessage('editor.codeBlock.copied')
 
   useEffect(() => () => {
     if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current)
@@ -493,9 +498,11 @@ function CodeBlockCopyButton({ copyTarget, locale }: { copyTarget: CodeBlockCopy
       .then(() => {
         trackEvent('code_block_copied')
         setActive(true)
+        setCopied(true)
         if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current)
         resetTimerRef.current = window.setTimeout(() => {
           setActive(false)
+          setCopied(false)
           resetTimerRef.current = null
         }, CODE_BLOCK_COPY_RESET_MS)
       })
@@ -516,24 +523,28 @@ function CodeBlockCopyButton({ copyTarget, locale }: { copyTarget: CodeBlockCopy
       data-editor-code-copy
       style={{ left: copyTarget.left, top: copyTarget.top }}
     >
-      <ActionTooltip copy={{ label }} side="left" align="center">
-        <Button
-          aria-label={label}
-          className="border-transparent bg-transparent text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground focus-visible:bg-transparent focus-visible:text-foreground"
-          data-editor-code-copy-button
-          onBlur={() => setActive(false)}
-          onClick={handleCopy}
-          onFocus={() => setActive(true)}
-          onMouseDown={stopEditorMouseDown}
-          onMouseEnter={() => setActive(true)}
-          onMouseLeave={() => setActive(false)}
-          size="icon-xs"
-          type="button"
-          variant="ghost"
-        >
-          <Copy aria-hidden="true" className="size-6" weight={active ? 'fill' : 'regular'} />
-        </Button>
-      </ActionTooltip>
+      {/* 受控 Tooltip:不随悬停弹出,仅在复制成功后短暂显示「已复制」。 */}
+      <Tooltip open={copied}>
+        <TooltipTrigger asChild>
+          <Button
+            aria-label={label}
+            className="border-transparent bg-transparent text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground focus-visible:bg-transparent focus-visible:text-foreground"
+            data-editor-code-copy-button
+            onBlur={() => setActive(false)}
+            onClick={handleCopy}
+            onFocus={() => setActive(true)}
+            onMouseDown={stopEditorMouseDown}
+            onMouseEnter={() => setActive(true)}
+            onMouseLeave={() => setActive(false)}
+            size="icon-xs"
+            type="button"
+            variant="ghost"
+          >
+            <Copy aria-hidden="true" className="size-6" weight={active ? 'fill' : 'regular'} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="left" align="center">{copiedLabel}</TooltipContent>
+      </Tooltip>
     </div>
   )
 }
