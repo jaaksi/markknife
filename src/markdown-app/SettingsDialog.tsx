@@ -485,10 +485,10 @@ const SPLIT_ORIENTATIONS: ReadonlyArray<{ value: SplitOrientation; labelKey: Mes
   { value: 'preview-left', labelKey: 'split.previewLeft' },
 ]
 
-/** 「编辑」面板:分栏方向(编辑区与预览区的左右排列)。 */
+/** 「编辑」面板:分栏方向(编辑区与预览区的左右排列)、打开文件是否默认在新窗口。 */
 function EditorPane() {
   const { t } = useLanguage()
-  const { preferences, setSplitOrientation } = useEditorPreferences()
+  const { preferences, setSplitOrientation, setOpenInNewWindow } = useEditorPreferences()
   return (
     <section>
       <SectionLabel>{t('settings.editor.section')}</SectionLabel>
@@ -499,6 +499,13 @@ function EditorPane() {
             value={preferences.splitOrientation}
             onChange={setSplitOrientation}
             options={SPLIT_ORIENTATIONS}
+          />
+        </SettingRow>
+        <SettingRow title={t('settings.editor.openInNewWindow')} description={t('settings.editor.openInNewWindowDesc')}>
+          <ToggleSwitch
+            label={t('settings.editor.openInNewWindow')}
+            checked={preferences.openInNewWindow}
+            onChange={setOpenInNewWindow}
           />
         </SettingRow>
       </div>

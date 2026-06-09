@@ -78,6 +78,9 @@ function MarkdownAppInner() {
   // 分栏方向是持久化偏好(设置页可改),默认左编辑右预览。
   const { preferences: editorPrefs } = useEditorPreferences()
   const splitOrientation = editorPrefs.splitOrientation
+  // 「打开文件默认在新窗口」偏好:用 ref 读取,避免进入打开相关回调的依赖、引起 useOpenWithFile 反复重绑。
+  const openInNewWindowRef = useRef(editorPrefs.openInNewWindow)
+  openInNewWindowRef.current = editorPrefs.openInNewWindow
 
   const { preferences: tocPrefs } = useTocPreferences()
   const [tocCollapsed, setTocCollapsed] = useState(!tocPrefs.defaultVisible)
@@ -160,6 +163,11 @@ function MarkdownAppInner() {
   const loadPath = useCallback(
     async (path: string) => {
       try {
+        // 偏好开启且当前窗口已有标签:在新窗口打开。空窗口 / 拆出窗口加载期标签数为 0,仍走当前窗口,不会递归。
+        if (openInNewWindowRef.current && tabsRef.current.length > 0) {
+          await invokeCommand('detach_tab_to_window', { path })
+          return
+        }
         const content = await readMarkdownFile(path)
         openInTab(path, content)
       } catch (error) {
@@ -173,7 +181,14 @@ function MarkdownAppInner() {
   const handleOpen = useCallback(async () => {
     try {
       const opened = await openMarkdownFiles()
-      opened.forEach((file) => openInTab(file.path, file.content))
+      // 偏好开启且当前窗口已有标签:每个选中文件各开一个新窗口;否则在当前窗口逐个新建标签。
+      if (openInNewWindowRef.current && tabsRef.current.length > 0) {
+        for (const file of opened) {
+          await invokeCommand('detach_tab_to_window', { path: file.path })
+        }
+      } else {
+        opened.forEach((file) => openInTab(file.path, file.content))
+      }
     } catch (error) {
       console.error('[markdown-app] 打开文件失败:', error)
     }

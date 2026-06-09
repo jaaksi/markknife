@@ -126,6 +126,8 @@ const zhCN = {
   'settings.editor.section': '编辑',
   'settings.editor.splitOrientation': '分栏方向',
   'settings.editor.splitOrientationDesc': '分栏模式下编辑区与预览区的左右排列',
+  'settings.editor.openInNewWindow': '在新窗口中打开文件',
+  'settings.editor.openInNewWindowDesc': '打开文件时默认在新窗口中打开(而非当前窗口新建标签)',
   'split.sourceLeft': '编辑·预览',
   'split.previewLeft': '预览·编辑',
 
@@ -343,6 +345,8 @@ const en: Record<MessageKey, string> = {
   'settings.editor.section': 'Editor',
   'settings.editor.splitOrientation': 'Split orientation',
   'settings.editor.splitOrientationDesc': 'Left/right arrangement of editor and preview in split mode',
+  'settings.editor.openInNewWindow': 'Open files in a new window',
+  'settings.editor.openInNewWindowDesc': 'Open files in a new window by default, instead of a new tab in the current window',
   'split.sourceLeft': 'Editor · Preview',
   'split.previewLeft': 'Preview · Editor',
 
