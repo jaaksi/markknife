@@ -569,7 +569,9 @@
 }
 
 .editor__blocknote-container [data-content-type="table"] th {
-  background: var(--table-header-background);
+  /* 用项目自有变量,避免与 BlockNote 运行时注入到 .bn-container 的同名 --table-header-background 撞名被遮蔽;
+     无阅读样式覆盖时回退到 BlockNote 默认值(白)。 */
+  background: var(--mk-table-header-bg, var(--table-header-background));
   padding: var(--table-cell-padding-vertical) var(--table-cell-padding-horizontal);
 }
 
