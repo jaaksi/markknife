@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Toolbar, type AppMode } from './Toolbar'
+import type { TabContextActions } from './TabBar'
 import { MarkdownReadonlyView } from './MarkdownReadonlyView'
 import { MarkdownEditableView } from './MarkdownEditableView'
 import { SplitView, type SplitOrientation } from './SplitView'
@@ -15,6 +16,7 @@ import { LanguageProvider, useLanguage } from './useLanguage'
 import { TocPanel, TocReopenRail } from './TocPanel'
 import { useTocHeadings } from './useTocHeadings'
 import { useOpenWithFile } from './useOpenWithFile'
+import { invokeCommand } from './invokeCommand'
 import { isTauri } from '../mock-tauri'
 import {
   Dialog,
@@ -24,6 +26,8 @@ import {
   DialogTitle,
 } from '../components/ui/dialog'
 import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
+import { writeClipboardText } from '../utils/clipboardText'
 import { StartPage } from './StartPage'
 import { useRecentFiles } from './useRecentFiles'
 import {
@@ -59,6 +63,9 @@ function MarkdownAppInner() {
   const [saveFeedback, setSaveFeedback] = useState<{ kind: 'saved' | 'error'; text: string } | null>(null)
   // 有未保存改动时关闭窗口的「是否保存」确认弹窗。
   const [closeDialogOpen, setCloseDialogOpen] = useState(false)
+  // 重命名弹窗:目标文件路径(null 表示未打开)+ 输入中的新文件名。
+  const [renameTarget, setRenameTarget] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   const { t } = useLanguage()
   const appUpdate = useAppUpdate()
   const checkAppUpdate = appUpdate.check
@@ -195,6 +202,19 @@ function MarkdownAppInner() {
           return
         }
       }
+      // 关闭最后一个标签:直接关闭当前窗口(而非回到起始页)。内容已落盘,置「已确认」标志绕过
+      // 窗口的未保存拦截(setTabs 异步、tabsRef 滞后,否则会误判仍有未保存而弹确认框)。
+      // 非 Tauri(浏览器 mock)无窗口句柄时退回起始页。
+      if (cur.length === 1) {
+        if (windowRef.current) {
+          closeConfirmedRef.current = true
+          await windowRef.current.close()
+        } else {
+          setTabs([])
+          setActivePath(null)
+        }
+        return
+      }
       setTabs((prev) => prev.filter((x) => x.path !== path))
       if (activePathRef.current === path) {
         const fallback = cur[idx + 1] ?? cur[idx - 1] ?? null
@@ -213,6 +233,102 @@ function MarkdownAppInner() {
     const next = (i + delta + cur.length) % cur.length
     setActivePath(cur[next].path)
   }, [])
+
+  // 右键菜单「在新窗口打开」:先静默落盘(确保新窗口读到最新内容),再拆为独立新窗口并从本窗口移走该标签。
+  const handleOpenInNewWindow = useCallback(
+    async (path: string) => {
+      const tab = tabsRef.current.find((x) => x.path === path)
+      if (tab?.dirty) {
+        try {
+          await writeMarkdownFile(tab.path, tab.content)
+          setTabs((prev) => prev.map((x) => (x.path === path ? { ...x, dirty: false } : x)))
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          console.error('[markdown-app] 拆出前保存失败:', error)
+          setSaveFeedback({ kind: 'error', text: t('app.toast.saveFailed', { message }) })
+          return
+        }
+      }
+      try {
+        await invokeCommand('detach_tab_to_window', { path })
+        void closeTab(path)
+      } catch (error) {
+        console.error('[markdown-app] 在新窗口打开失败:', error)
+      }
+    },
+    [closeTab, t],
+  )
+
+  // 右键菜单「在访达中显示」。
+  const handleRevealInFinder = useCallback((path: string) => {
+    void invokeCommand('reveal_path_in_dir', { path }).catch((error) =>
+      console.error('[markdown-app] 在访达中显示失败:', error),
+    )
+  }, [])
+
+  // 右键菜单「复制文件路径」:写入剪贴板并提示。
+  const handleCopyPath = useCallback(
+    async (path: string) => {
+      try {
+        await writeClipboardText(path)
+        setSaveFeedback({ kind: 'saved', text: t('tab.menu.pathCopied') })
+      } catch (error) {
+        console.error('[markdown-app] 复制文件路径失败:', error)
+      }
+    },
+    [t],
+  )
+
+  // 右键菜单「关闭其他」:其余标签先落盘未保存内容,只保留当前标签并激活它。
+  const handleCloseOthers = useCallback(async (keepPath: string) => {
+    for (const tab of tabsRef.current.filter((x) => x.path !== keepPath && x.dirty)) {
+      try {
+        await writeMarkdownFile(tab.path, tab.content)
+      } catch (error) {
+        console.error('[markdown-app] 关闭其他前保存失败:', error)
+      }
+    }
+    setTabs((prev) => prev.filter((x) => x.path === keepPath))
+    setActivePath(keepPath)
+  }, [])
+
+  // 右键菜单「重命名」:打开弹窗,预填当前文件名。
+  const handleRename = useCallback((path: string) => {
+    setRenameTarget(path)
+    setRenameValue(basenameOf(path))
+  }, [])
+
+  // 提交重命名:后端改名后,更新标签 path/name、激活态与最近记录。
+  const submitRename = useCallback(async () => {
+    const target = renameTarget
+    const name = renameValue.trim()
+    if (!target || !name) return
+    try {
+      const newPath = await invokeCommand<string>('rename_markdown_file', { oldPath: target, newName: name })
+      setTabs((prev) =>
+        prev.map((x) => (x.path === target ? { ...x, path: newPath, name: basenameOf(newPath) } : x)),
+      )
+      setActivePath((cur) => (cur === target ? newPath : cur))
+      recordRecent(newPath, basenameOf(newPath))
+      setRenameTarget(null)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error('[markdown-app] 重命名失败:', error)
+      setSaveFeedback({ kind: 'error', text: t('tab.rename.failed', { message }) })
+    }
+  }, [renameTarget, renameValue, recordRecent, t])
+
+  // 标签右键菜单的动作集合(透传给 Toolbar → TabBar)。
+  const tabActions = useMemo<TabContextActions>(
+    () => ({
+      onOpenInNewWindow: handleOpenInNewWindow,
+      onRevealInFinder: handleRevealInFinder,
+      onCopyPath: handleCopyPath,
+      onRename: handleRename,
+      onCloseOthers: handleCloseOthers,
+    }),
+    [handleOpenInNewWindow, handleRevealInFinder, handleCopyPath, handleRename, handleCloseOthers],
+  )
 
   // 关闭确认框:保存全部未保存后关 / 不保存直接关(置确认标志后 close 会被放行)。
   const confirmSaveAndClose = useCallback(async () => {
@@ -277,6 +393,12 @@ function MarkdownAppInner() {
         case 'open':
           void handleOpen()
           break
+        case 'openInNewWindow': {
+          // 与右键菜单一致:仅当前窗口有多个标签时才拆出当前标签。
+          const path = activePathRef.current
+          if (path && tabsRef.current.length > 1) void handleOpenInNewWindow(path)
+          break
+        }
         case 'toggleToc':
           setTocCollapsed((prev) => !prev)
           break
@@ -307,7 +429,7 @@ function MarkdownAppInner() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [doSave, handleOpen, handleNew, closeTab, switchTab, comboLookup])
+  }, [doSave, handleOpen, handleNew, closeTab, switchTab, handleOpenInNewWindow, comboLookup])
 
   // toast 自动消失:成功 2 秒,错误 5 秒。
   useEffect(() => {
@@ -382,6 +504,7 @@ function MarkdownAppInner() {
         onActivateTab={setActivePath}
         onCloseTab={closeTab}
         onNewTab={handleNew}
+        tabActions={tabActions}
         onOpenSettings={() => setSettingsOpen(true)}
       />
       <div className="relative flex min-h-0 flex-1">
@@ -445,6 +568,42 @@ function MarkdownAppInner() {
             </Button>
             <Button onClick={() => void confirmSaveAndClose()}>{t('app.close.save')}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 重命名文件弹窗 */}
+      <Dialog
+        open={renameTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRenameTarget(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogTitle>{t('tab.rename.title')}</DialogTitle>
+          <DialogDescription>{t('tab.rename.placeholder')}</DialogDescription>
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void submitRename()
+            }}
+          >
+            <Input
+              autoFocus
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              placeholder={t('tab.rename.placeholder')}
+              aria-label={t('tab.rename.title')}
+            />
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button type="button" variant="ghost" onClick={() => setRenameTarget(null)}>
+                {t('tab.rename.cancel')}
+              </Button>
+              <Button type="submit" disabled={!renameValue.trim()}>
+                {t('tab.rename.confirm')}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

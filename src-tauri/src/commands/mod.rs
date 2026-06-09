@@ -4,6 +4,7 @@ mod runtime;
 mod system;
 mod vault;
 mod version;
+mod window;
 
 use std::borrow::Cow;
 
@@ -13,6 +14,7 @@ pub use runtime::*;
 pub use system::*;
 pub use vault::*;
 pub use version::*;
+pub use window::*;
 
 /// Expand a leading `~` or `~/` in a path string to the user's home directory.
 /// Returns the original string unchanged if it doesn't start with `~` or if the

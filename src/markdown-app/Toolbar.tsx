@@ -3,7 +3,7 @@ import { Button } from '../components/ui/button'
 import { ActionTooltip } from '../components/ui/action-tooltip'
 import { TooltipProvider } from '../components/ui/tooltip'
 import { isMac } from '../utils/platform'
-import { TabBar, type TabItem } from './TabBar'
+import { TabBar, type TabItem, type TabContextActions } from './TabBar'
 import { EyeIcon, FolderIcon, GearIcon, PencilIcon, SplitIcon } from './toolbarIcons'
 import { useLanguage } from './useLanguage'
 import type { MessageKey } from './i18nMessages'
@@ -20,6 +20,7 @@ interface ToolbarProps {
   onActivateTab: (path: string) => void
   onCloseTab: (path: string) => void
   onNewTab: () => void
+  tabActions: TabContextActions
   onOpenSettings: () => void
 }
 
@@ -75,6 +76,7 @@ export function Toolbar({
   onActivateTab,
   onCloseTab,
   onNewTab,
+  tabActions,
   onOpenSettings,
 }: ToolbarProps) {
   const { t } = useLanguage()
@@ -96,6 +98,7 @@ export function Toolbar({
             onActivate={onActivateTab}
             onClose={onCloseTab}
             onNew={onNewTab}
+            actions={tabActions}
           />
         ) : (
           // 无文件:起始页品牌名(对齐设计稿)

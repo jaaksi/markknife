@@ -14,6 +14,7 @@ import type { MessageKey } from './i18nMessages'
 /** 可自定义快捷键的动作。 */
 export type ShortcutAction =
   | 'toggleToc' | 'modeView' | 'modeWysiwyg' | 'modeSplit' | 'save' | 'open'
+  | 'openInNewWindow'
   | 'newTab' | 'closeTab' | 'nextTab' | 'prevTab'
 
 /** 动作展示顺序与文案翻译键(用于设置页,渲染时再 t())。 */
@@ -24,6 +25,7 @@ export const SHORTCUT_ACTIONS: ReadonlyArray<{ action: ShortcutAction; labelKey:
   { action: 'modeSplit', labelKey: 'shortcut.modeSplit.label' },
   { action: 'save', labelKey: 'shortcut.save.label', detailKey: 'shortcut.save.detail' },
   { action: 'open', labelKey: 'shortcut.open.label' },
+  { action: 'openInNewWindow', labelKey: 'shortcut.openInNewWindow.label' },
   { action: 'newTab', labelKey: 'shortcut.newTab.label' },
   { action: 'closeTab', labelKey: 'shortcut.closeTab.label' },
   { action: 'nextTab', labelKey: 'shortcut.nextTab.label' },
@@ -38,6 +40,7 @@ const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   modeSplit: 'mod+Digit3',
   save: 'mod+KeyS',
   open: 'mod+KeyO',
+  openInNewWindow: 'mod+shift+KeyO',
   newTab: 'mod+KeyT',
   closeTab: 'mod+KeyW',
   nextTab: 'mod+shift+BracketRight',

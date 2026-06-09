@@ -287,7 +287,11 @@ macro_rules! app_invoke_handler {
             commands::get_build_number,
             commands::check_for_app_update,
             commands::download_and_install_app_update,
-            commands::take_pending_open_file
+            commands::take_pending_open_file,
+            commands::detach_tab_to_window,
+            commands::take_detached_open_path,
+            commands::reveal_path_in_dir,
+            commands::rename_markdown_file
         ]
     };
 }
@@ -336,7 +340,9 @@ pub fn run() {
     let builder = builder
         .manage(AllowedAssetScopeRoots(Mutex::new(Vec::new())))
         .manage(window_state::MainWindowFrameState::default())
-        .manage(commands::PendingOpenFile::default());
+        .manage(commands::PendingOpenFile::default())
+        .manage(commands::DetachedOpenPaths::default())
+        .manage(commands::DetachedWindowCounter::default());
 
     with_invoke_handler(builder)
         .setup(setup_app)
