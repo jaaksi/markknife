@@ -66,10 +66,13 @@ const EXTRA_SUPPORTED_LANGUAGES = codeBlockLanguageOptions(EXTRA_CODE_BLOCK_LANG
 function currentCodeBlockTheme() {
   if (typeof document === 'undefined') return LIGHT_CODE_THEME
 
+  // 全局深色(html.dark / html[data-theme=dark])与「深色」阅读样式都要用 github-dark:
+  // 后者把 data-theme="dark" 挂在编辑器表面 .editor-scroll-area 上(非根元素),
+  // 若漏判会在深色背景上渲染浅色主题的近黑色文字,导致代码不可读。
   const root = document.documentElement
-  return root.classList.contains('dark') || root.dataset.theme === 'dark'
-    ? DARK_CODE_THEME
-    : LIGHT_CODE_THEME
+  const globalDark = root.classList.contains('dark') || root.dataset.theme === 'dark'
+  const surfaceDark = document.querySelector('.editor-scroll-area[data-theme="dark"]') !== null
+  return globalDark || surfaceDark ? DARK_CODE_THEME : LIGHT_CODE_THEME
 }
 
 function prioritizeTheme(themes: string[], theme: string) {
