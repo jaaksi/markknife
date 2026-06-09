@@ -37,13 +37,20 @@ pub fn detach_tab_to_window(
     let new_x = pos.x as f64 / scale + 40.0;
     let new_y = pos.y as f64 / scale + 40.0;
 
+    // URL 带 detached 标记:前端据此在文件载入前显示加载态(而非起始页)。
+    // 窗口立即可见以保证点击即时反馈,用与主窗口一致的背景色避免前端加载期白闪。
     #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
-    let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
-        .title("MarkKnife")
-        .inner_size(1400.0, 900.0)
-        .min_inner_size(480.0, 400.0)
-        .resizable(true)
-        .position(new_x, new_y);
+    let mut builder = WebviewWindowBuilder::new(
+        &app,
+        &label,
+        WebviewUrl::App("index.html?detached=1".into()),
+    )
+    .title("MarkKnife")
+    .inner_size(1400.0, 900.0)
+    .min_inner_size(480.0, 400.0)
+    .resizable(true)
+    .background_color(tauri::window::Color(247, 246, 243, 255))
+    .position(new_x, new_y);
 
     // 复刻主窗口的 macOS 标题栏外观（隐藏标题 + 覆盖式 + 红绿灯位置）。
     #[cfg(target_os = "macos")]

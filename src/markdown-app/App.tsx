@@ -82,6 +82,12 @@ function MarkdownAppInner() {
   const { preferences: tocPrefs } = useTocPreferences()
   const [tocCollapsed, setTocCollapsed] = useState(!tocPrefs.defaultVisible)
 
+  // 由标签拆出而新建的窗口(URL 带 detached 标记):创建时是隐藏的,待文件渲染好再显示,避免闪起始页。
+  const isDetachedWindow = useMemo(
+    () => new URLSearchParams(window.location.search).get('detached') === '1',
+    [],
+  )
+
   // 当前标签的派生值,兼容下游(工具栏 / 目录 / 关闭确认)的单值用法。
   const activeTab = tabs.find((tab) => tab.path === activePath) ?? null
   const filePath = activeTab?.path ?? null
@@ -471,6 +477,15 @@ function MarkdownAppInner() {
     return () => clearTimeout(handle)
   }, [checkAppUpdate])
 
+  // 拆出窗口在领取文件前显示加载态(而非起始页)。兜底:若超时仍没领到文件(异常),回退到起始页,
+  // 不让加载态卡死。
+  const [detachedLoadTimedOut, setDetachedLoadTimedOut] = useState(false)
+  useEffect(() => {
+    if (!isDetachedWindow) return
+    const handle = setTimeout(() => setDetachedLoadTimedOut(true), 3000)
+    return () => clearTimeout(handle)
+  }, [isDetachedWindow])
+
   // 无文件 / 无标题不显示目录。
   const showToc = Boolean(filePath) && hasHeadings
   const tocPanel =
@@ -528,6 +543,14 @@ function MarkdownAppInner() {
               <TocReopenRail position={tocPrefs.position} onExpand={() => setTocCollapsed(false)} />
             )}
           </>
+        ) : isDetachedWindow && !detachedLoadTimedOut ? (
+          // 拆出窗口领取文件期间的加载态(避免闪起始页);领到文件即切走,超时则回退起始页。
+          <div className="flex flex-1 items-center justify-center">
+            <div
+              className="size-6 animate-spin rounded-full border-2 border-muted border-t-foreground"
+              aria-label={t('app.loading')}
+            />
+          </div>
         ) : (
           <StartPage
             recents={recentFiles.recents}

@@ -164,6 +164,7 @@ const zhCN = {
   'updateDialog.downloadedPercent': '已下载 {percent}%({size})',
 
   // —— 应用:toast 与对话框 ——
+  'app.loading': '加载中…',
   'app.toast.saved': '已保存',
   'app.toast.noFile': '没有打开的文件,无法保存',
   'app.toast.saveFailed': '保存失败:{message}',
@@ -380,6 +381,7 @@ const en: Record<MessageKey, string> = {
   'updateDialog.downloadedPercent': 'Downloaded {percent}% ({size})',
 
   // —— App: toast & dialogs ——
+  'app.loading': 'Loading…',
   'app.toast.saved': 'Saved',
   'app.toast.noFile': 'No file is open — nothing to save',
   'app.toast.saveFailed': 'Save failed: {message}',
