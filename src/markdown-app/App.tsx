@@ -15,6 +15,8 @@ import { ShortcutsProvider, useShortcuts, eventToCombo } from './useShortcuts'
 import { LanguageProvider, useLanguage } from './useLanguage'
 import { TocPanel, TocReopenRail } from './TocPanel'
 import { useTocHeadings } from './useTocHeadings'
+import { SearchBar } from './SearchBar'
+import { useDocumentSearch } from './useDocumentSearch'
 import { useOpenWithFile } from './useOpenWithFile'
 import { invokeCommand } from './invokeCommand'
 import { isTauri } from '../mock-tauri'
@@ -99,6 +101,13 @@ function MarkdownAppInner() {
 
   const toc = useTocHeadings(`${mode}-${filePath ?? ''}`)
   const hasHeadings = toc.headings.length > 0
+
+  // 文档内查找(Cmd+F):仅在有文件时可用;搜索富文本渲染区,签名随模式/文件变化。
+  const [searchOpen, setSearchOpen] = useState(false)
+  const search = useDocumentSearch({
+    active: searchOpen && Boolean(filePath),
+    signature: `${mode}-${filePath ?? ''}`,
+  })
   // 切换 / 重开文件(activePath 变化)、标题首次出现、或改默认设置,都回到目录默认状态
   // (不记忆运行时临时收起)。用「记录上次触发键 + 渲染期重置」取代 effect 内 setState。
   const tocResetKey = `${activePath ?? ''}|${tocPrefs.defaultVisible}|${hasHeadings}`
@@ -402,6 +411,14 @@ function MarkdownAppInner() {
         setSettingsOpen(true)
         return
       }
+      // 文档内查找固定快捷键 Cmd/Ctrl+F:有文件时打开搜索栏(用 e.code 规避布局差异)。
+      if (event.code === 'KeyF') {
+        if (activePathRef.current) {
+          event.preventDefault()
+          setSearchOpen(true)
+        }
+        return
+      }
       const combo = eventToCombo(event)
       if (!combo) return
       const action = comboLookup[combo]
@@ -556,6 +573,17 @@ function MarkdownAppInner() {
             {tocPrefs.position === 'right' && tocPanel}
             {showToc && tocCollapsed && (
               <TocReopenRail position={tocPrefs.position} onExpand={() => setTocCollapsed(false)} />
+            )}
+            {searchOpen && (
+              <SearchBar
+                query={search.query}
+                onQueryChange={search.setQuery}
+                total={search.total}
+                activeIndex={search.activeIndex}
+                onNext={search.next}
+                onPrev={search.prev}
+                onClose={() => setSearchOpen(false)}
+              />
             )}
           </>
         ) : isDetachedWindow && !detachedLoadTimedOut ? (

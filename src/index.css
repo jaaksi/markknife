@@ -603,3 +603,14 @@
   0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
   30% { opacity: 1; transform: translateY(-2px); }
 }
+
+/* --- 文档内查找高亮(CSS Custom Highlight API) --- */
+/* 全部匹配:淡黄底;当前匹配:橙底深字。基于 Range 高亮,不修改 DOM。 */
+::highlight(mk-search) {
+  background-color: rgba(255, 213, 0, 0.4);
+}
+
+::highlight(mk-search-active) {
+  background-color: #ff9632;
+  color: #1a1a1a;
+}
