@@ -12,7 +12,9 @@ import {
 import type { MessageKey } from './i18nMessages'
 
 /** 可自定义快捷键的动作。 */
-export type ShortcutAction = 'toggleToc' | 'modeView' | 'modeWysiwyg' | 'modeSplit' | 'save' | 'open'
+export type ShortcutAction =
+  | 'toggleToc' | 'modeView' | 'modeWysiwyg' | 'modeSplit' | 'save' | 'open'
+  | 'newTab' | 'closeTab' | 'nextTab' | 'prevTab'
 
 /** 动作展示顺序与文案翻译键(用于设置页,渲染时再 t())。 */
 export const SHORTCUT_ACTIONS: ReadonlyArray<{ action: ShortcutAction; labelKey: MessageKey; detailKey?: MessageKey }> = [
@@ -22,6 +24,10 @@ export const SHORTCUT_ACTIONS: ReadonlyArray<{ action: ShortcutAction; labelKey:
   { action: 'modeSplit', labelKey: 'shortcut.modeSplit.label' },
   { action: 'save', labelKey: 'shortcut.save.label', detailKey: 'shortcut.save.detail' },
   { action: 'open', labelKey: 'shortcut.open.label' },
+  { action: 'newTab', labelKey: 'shortcut.newTab.label' },
+  { action: 'closeTab', labelKey: 'shortcut.closeTab.label' },
+  { action: 'nextTab', labelKey: 'shortcut.nextTab.label' },
+  { action: 'prevTab', labelKey: 'shortcut.prevTab.label' },
 ]
 
 /** 默认绑定。combo 用 `mod`(⌘/Ctrl)+ KeyboardEvent.code,规避 macOS Option 变字符问题。 */
@@ -32,6 +38,10 @@ const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   modeSplit: 'mod+Digit3',
   save: 'mod+KeyS',
   open: 'mod+KeyO',
+  newTab: 'mod+KeyT',
+  closeTab: 'mod+KeyW',
+  nextTab: 'mod+shift+BracketRight',
+  prevTab: 'mod+shift+BracketLeft',
 }
 
 const MODIFIER_CODES = new Set([

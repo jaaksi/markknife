@@ -49,6 +49,22 @@ export async function openMarkdownFile(): Promise<OpenedFile | null> {
   return { path: selected, content }
 }
 
+/** 多选打开:返回所有选中的 Markdown 文件(已读出内容)。取消返回空数组。 */
+export async function openMarkdownFiles(): Promise<OpenedFile[]> {
+  if (!isTauri()) {
+    const content = await readMarkdownFile(DEV_FALLBACK_PATH)
+    return [{ path: DEV_FALLBACK_PATH, content }]
+  }
+
+  const selected = await open({
+    multiple: true,
+    directory: false,
+    filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }],
+  })
+  const paths = Array.isArray(selected) ? selected : typeof selected === 'string' ? [selected] : []
+  return Promise.all(paths.map(async (path) => ({ path, content: await readMarkdownFile(path) })))
+}
+
 /** 新建一个空 Markdown 文件:弹保存框选路径 → 写入空内容 → 返回。取消则返回 null。 */
 export async function createMarkdownFile(): Promise<OpenedFile | null> {
   if (!isTauri()) {

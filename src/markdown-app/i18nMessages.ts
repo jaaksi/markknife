@@ -17,6 +17,8 @@ const zhCN = {
   'toolbar.unsaved': '未保存',
   'toolbar.startPage': 'MarkKnife · 起始页',
   'toolbar.modeGroup': '模式',
+  'tab.new': '新建标签',
+  'tab.close': '关闭标签',
   'mode.view': '查看',
   'mode.wysiwyg': '所见即所得',
   'mode.split': '分栏',
@@ -94,6 +96,10 @@ const zhCN = {
   'shortcut.save.label': '保存',
   'shortcut.save.detail': '立即写回磁盘',
   'shortcut.open.label': '打开文件',
+  'shortcut.newTab.label': '新建标签',
+  'shortcut.closeTab.label': '关闭标签',
+  'shortcut.nextTab.label': '下一个标签',
+  'shortcut.prevTab.label': '上一个标签',
 
   // —— 设置:目录 ——
   'settings.toc.section': '目录',
@@ -155,6 +161,7 @@ const zhCN = {
   'app.close.cancel': '取消',
   'app.close.discard': '不保存',
   'app.close.save': '保存',
+  'app.close.descMultiple': '有 {count} 个文件未保存,关闭前要全部保存吗?',
 
   // —— 目录面板 ——
   'toc.title': '目录',
@@ -214,6 +221,8 @@ const en: Record<MessageKey, string> = {
   'toolbar.unsaved': 'Unsaved',
   'toolbar.startPage': 'MarkKnife · Start Page',
   'toolbar.modeGroup': 'Mode',
+  'tab.new': 'New tab',
+  'tab.close': 'Close tab',
   'mode.view': 'View',
   'mode.wysiwyg': 'WYSIWYG',
   'mode.split': 'Split',
@@ -291,6 +300,10 @@ const en: Record<MessageKey, string> = {
   'shortcut.save.label': 'Save',
   'shortcut.save.detail': 'Write to disk immediately',
   'shortcut.open.label': 'Open file',
+  'shortcut.newTab.label': 'New tab',
+  'shortcut.closeTab.label': 'Close tab',
+  'shortcut.nextTab.label': 'Next tab',
+  'shortcut.prevTab.label': 'Previous tab',
 
   // —— Settings: outline ——
   'settings.toc.section': 'Outline',
@@ -352,6 +365,7 @@ const en: Record<MessageKey, string> = {
   'app.close.cancel': 'Cancel',
   'app.close.discard': 'Don’t save',
   'app.close.save': 'Save',
+  'app.close.descMultiple': '{count} files have unsaved changes. Save all before closing?',
 
   // —— Outline panel ——
   'toc.title': 'Outline',

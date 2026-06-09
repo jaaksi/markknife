@@ -69,3 +69,21 @@ export function GearIcon(props: SVGProps<SVGSVGElement>) {
     </StrokeIcon>
   )
 }
+
+/** 关闭:✕ */
+export function CloseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <StrokeIcon {...props}>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </StrokeIcon>
+  )
+}
+
+/** 新建:+ */
+export function PlusIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <StrokeIcon {...props}>
+      <path d="M12 5v14M5 12h14" />
+    </StrokeIcon>
+  )
+}

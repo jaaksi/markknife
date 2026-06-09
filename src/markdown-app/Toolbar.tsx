@@ -3,7 +3,7 @@ import { Button } from '../components/ui/button'
 import { ActionTooltip } from '../components/ui/action-tooltip'
 import { TooltipProvider } from '../components/ui/tooltip'
 import { isMac } from '../utils/platform'
-import { basenameOf } from './fileIo'
+import { TabBar, type TabItem } from './TabBar'
 import { EyeIcon, FolderIcon, GearIcon, PencilIcon, SplitIcon } from './toolbarIcons'
 import { useLanguage } from './useLanguage'
 import type { MessageKey } from './i18nMessages'
@@ -12,11 +12,14 @@ import type { MessageKey } from './i18nMessages'
 export type AppMode = 'view' | 'wysiwyg' | 'split'
 
 interface ToolbarProps {
-  filePath: string | null
-  dirty: boolean
+  tabs: TabItem[]
+  activePath: string | null
   mode: AppMode
   onModeChange: (mode: AppMode) => void
   onOpen: () => void
+  onActivateTab: (path: string) => void
+  onCloseTab: (path: string) => void
+  onNewTab: () => void
   onOpenSettings: () => void
 }
 
@@ -63,8 +66,19 @@ function ToolbarIconButton({
   )
 }
 
-export function Toolbar({ filePath, dirty, mode, onModeChange, onOpen, onOpenSettings }: ToolbarProps) {
+export function Toolbar({
+  tabs,
+  activePath,
+  mode,
+  onModeChange,
+  onOpen,
+  onActivateTab,
+  onCloseTab,
+  onNewTab,
+  onOpenSettings,
+}: ToolbarProps) {
   const { t } = useLanguage()
+  const hasTabs = tabs.length > 0
   return (
     <TooltipProvider delayDuration={700}>
       <div
@@ -75,17 +89,14 @@ export function Toolbar({ filePath, dirty, mode, onModeChange, onOpen, onOpenSet
           <FolderIcon className="size-[17px]" />
         </ToolbarIconButton>
 
-        {filePath ? (
-          <div className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-foreground">
-            <span className="truncate" data-testid="markdown-filename">{basenameOf(filePath)}</span>
-            {dirty && (
-              <span
-                aria-label={t('toolbar.unsaved')}
-                title={t('toolbar.unsaved')}
-                className="size-[7px] shrink-0 rounded-full bg-muted-foreground/50"
-              />
-            )}
-          </div>
+        {hasTabs ? (
+          <TabBar
+            tabs={tabs}
+            activePath={activePath}
+            onActivate={onActivateTab}
+            onClose={onCloseTab}
+            onNew={onNewTab}
+          />
         ) : (
           // 无文件:起始页品牌名(对齐设计稿)
           <span className="text-[13px] font-semibold text-muted-foreground" data-testid="markdown-filename">
@@ -93,10 +104,10 @@ export function Toolbar({ filePath, dirty, mode, onModeChange, onOpen, onOpenSet
           </span>
         )}
 
-        {/* 中间可拖拽空白区域(自定义窗口拖动),不干扰按钮点击 */}
+        {/* 中间可拖拽空白(自定义窗口拖动)+ 标签栏与模式组的安全间距 */}
         <div data-tauri-drag-region className="h-full flex-1" />
 
-        {filePath && (
+        {hasTabs && (
           <div className="flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5" role="group" aria-label={t('toolbar.modeGroup')}>
             {MODES.map(({ value, labelKey, Icon }) => (
               <ToolbarIconButton
