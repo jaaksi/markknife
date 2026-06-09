@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Markknife · 目录面板 UI 原型</title>
+<style>
+  :root {
+    --bg: #f7f6f3;
+    --content: #ffffff;
+    --fg: #34302a;
+    --fg-muted: #94908a;
+    --fg-soft: #b6b2ab;
+    --border: #e9e6e0;
+    --hover: #f0eee9;
+    --accent: #4f6bed;
+    --accent-soft: #ecefff;
+    --accent-blue: #5b86ff;
+    --accent-purple: #8b5cf6;
+    --radius: 10px;
+    --toolbar-h: 52px;
+    --toc-w: 264px;
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #e3e1dc;
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px;
+  }
+
+  /* —— 模拟应用窗口 —— */
+  .window {
+    width: min(1180px, 100%);
+    height: min(760px, calc(100vh - 56px));
+    background: var(--bg);
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0,0,0,.28), 0 2px 8px rgba(0,0,0,.14);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* —— 顶部工具栏 —— */
+  .toolbar {
+    height: var(--toolbar-h);
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px 0 84px; /* 左侧留出 macOS 红绿灯位 */
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .traffic { position: absolute; top: 19px; left: 18px; display: flex; gap: 8px; }
+  .traffic i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .traffic .r { background: #ff5f57; }
+  .traffic .y { background: #febc2e; }
+  .traffic .g { background: #28c840; }
+
+  .tbtn {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 32px; padding: 0 10px;
+    border: 1px solid transparent; border-radius: 8px;
+    background: transparent; color: var(--fg);
+    font-size: 13px; cursor: pointer;
+    transition: background .12s, border-color .12s;
+  }
+  .tbtn:hover { background: var(--hover); }
+  .tbtn.icon { padding: 0 8px; }
+  .tbtn.active { background: var(--accent-soft); color: var(--accent); }
+  .tbtn svg { width: 17px; height: 17px; }
+  .filename { font-size: 13px; font-weight: 600; color: var(--fg); margin-left: 2px; }
+  .dot-dirty { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-soft); margin-left: 4px; }
+  .spacer { flex: 1; }
+
+  .segmented { display: inline-flex; background: var(--hover); border: 1px solid var(--border); border-radius: 9px; padding: 2px; }
+  .segmented button {
+    border: 0; background: transparent; color: var(--fg-muted);
+    font-size: 12.5px; padding: 5px 12px; border-radius: 7px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .segmented button.on { background: #fff; color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.08); font-weight: 600; }
+  .segmented button svg { width: 15px; height: 15px; }
+
+  /* 工具栏模式分段:纯图标按钮,悬停在下方弹出文字提示 */
+  #modeSeg button {
+    position: relative;
+    width: 34px; height: 28px; padding: 0;
+    justify-content: center; gap: 0;
+    transition: background .12s, color .12s;
+  }
+  #modeSeg button:hover { color: var(--fg); }
+  #modeSeg button.on { color: var(--accent); }
+  #modeSeg button svg { width: 16px; height: 16px; }
+  #modeSeg button::after {
+    content: attr(data-tip);
+    position: absolute; top: calc(100% + 8px); left: 50%;
+    transform: translateX(-50%) translateY(2px);
+    white-space: nowrap;
+    background: #2b2722; color: #fff;
+    font-size: 11.5px; line-height: 1; padding: 5px 8px; border-radius: 6px;
+    opacity: 0; pointer-events: none;
+    transition: opacity .12s ease, transform .12s ease;
+    box-shadow: 0 4px 14px rgba(0,0,0,.2);
+    z-index: 60;
+  }
+  /* 悬停一段时间后才弹出(进入有 .7s 延迟,移开立即消失) */
+  #modeSeg button:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); transition-delay: .7s; }
+
+  /* —— 主体:目录 + 内容 —— */
+  .body { flex: 1; display: flex; min-height: 0; }
+  .body.toc-right { flex-direction: row-reverse; }
+
+  /* —— 目录面板 —— */
+  .toc {
+    width: var(--toc-w); flex: 0 0 var(--toc-w);
+    background: var(--bg);
+    display: flex; flex-direction: column; min-height: 0;
+    transition: margin .22s ease, opacity .18s ease;
+  }
+  .body:not(.toc-right) .toc { border-right: 1px solid var(--border); }
+  .body.toc-right .toc { border-left: 1px solid var(--border); }
+
+  .toc-head {
+    height: 40px; flex: 0 0 auto;
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 8px 0 16px;
+  }
+  .toc-title { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-muted); flex: 1; }
+  .toc-collapse {
+    width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+    border: 0; border-radius: 7px; background: transparent; color: var(--fg-muted); cursor: pointer;
+  }
+  .toc-collapse:hover { background: var(--hover); color: var(--fg); }
+  .toc-collapse svg { width: 16px; height: 16px; }
+
+  .toc-list { overflow-y: auto; padding: 4px 8px 16px; flex: 1; }
+  /* 树形行:左侧折叠三角 + 可点击标题。缩进按层级。 */
+  .toc-row { position: relative; display: flex; align-items: center; margin: 1px 0; }
+  .toc-row.lvl-1 { padding-left: 2px; }
+  .toc-row.lvl-2 { padding-left: 18px; }
+  .toc-row.lvl-3 { padding-left: 34px; }
+  .toc-row.hidden { display: none; }
+  .toc-caret {
+    width: 18px; height: 18px; flex: none; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    border: 0; background: transparent; color: var(--fg-soft);
+    border-radius: 4px; cursor: pointer;
+  }
+  .toc-caret:hover { background: var(--hover); color: var(--fg); }
+  .toc-caret svg { width: 12px; height: 12px; transition: transform .15s; }
+  .toc-row.collapsed > .toc-caret svg { transform: rotate(-90deg); }
+  .toc-caret.leaf { visibility: hidden; cursor: default; }
+  .toc-link {
+    flex: 1; min-width: 0;
+    padding: 6px 8px; border-radius: 7px;
+    color: var(--fg-muted); text-decoration: none;
+    font-size: 13px; line-height: 1.35;
+    cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: background .1s, color .1s;
+  }
+  .toc-link:hover { background: var(--hover); color: var(--fg); }
+  .toc-row.lvl-1 > .toc-link { font-weight: 600; color: var(--fg); }
+  .toc-row.lvl-3 > .toc-link { font-size: 12.5px; }
+  .toc-link.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .toc-link.active::before {
+    content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px;
+    border-radius: 2px; background: var(--accent);
+  }
+
+  /* 收起态:整列移出 + 透明,左侧出现细条重新展开 */
+  .window.toc-collapsed .toc { margin-left: calc(-1 * var(--toc-w)); opacity: 0; pointer-events: none; }
+  .window.toc-collapsed.body-right .toc { margin-left: 0; margin-right: calc(-1 * var(--toc-w)); }
+
+  .reopen {
+    position: absolute; top: calc(var(--toolbar-h) + 12px); left: 0;
+    width: 30px; height: 84px;
+    display: none; align-items: center; justify-content: center;
+    border: 1px solid var(--border); border-left: 0;
+    border-radius: 0 10px 10px 0; background: var(--content);
+    box-shadow: 2px 2px 8px rgba(0,0,0,.06); cursor: pointer; color: var(--fg-muted);
+    z-index: 5;
+  }
+  .reopen:hover { color: var(--accent); }
+  .reopen .vtext { writing-mode: vertical-rl; font-size: 11.5px; letter-spacing: .15em; margin-top: 4px; }
+  .reopen svg { width: 15px; height: 15px; }
+  .window.toc-collapsed .reopen { display: flex; }
+  .window.toc-collapsed.body-right .reopen { left: auto; right: 0; border: 1px solid var(--border); border-right: 0; border-radius: 10px 0 0 10px; }
+
+  /* —— 内容区 —— */
+  .content-wrap { flex: 1; min-width: 0; background: var(--bg); overflow-y: auto; position: relative; }
+  .content {
+    max-width: 720px; margin: 0 auto; padding: 40px 56px 120px;
+    background: var(--content); min-height: 100%;
+  }
+  .content h1 { font-size: 30px; font-weight: 700; margin: 0 0 6px; letter-spacing: -.01em; }
+  .content h2 { font-size: 21px; font-weight: 650; margin: 34px 0 8px; padding-top: 6px; }
+  .content h3 { font-size: 16.5px; font-weight: 650; margin: 22px 0 6px; color: #4a463f; }
+  .content p { font-size: 15px; line-height: 1.75; color: #4f4b44; margin: 10px 0; }
+  .content .lead { color: var(--fg-muted); font-size: 15px; }
+  .content code { background: var(--hover); padding: 1px 6px; border-radius: 5px; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  /* —— 设置弹窗 —— */
+  .backdrop {
+    position: absolute; inset: 0; background: rgba(20,18,15,.42);
+    display: none; align-items: center; justify-content: center; z-index: 20;
+    backdrop-filter: blur(2px);
+  }
+  .backdrop.show { display: flex; }
+  .dialog {
+    width: 540px; max-width: calc(100% - 32px); max-height: calc(100% - 48px);
+    background: var(--content); border-radius: 14px; overflow: hidden;
+    box-shadow: 0 30px 70px rgba(0,0,0,.35); display: flex; flex-direction: column;
+  }
+  .dialog-head {
+    display: flex; align-items: flex-start; gap: 16px; padding: 20px 22px; color: #fff;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  }
+  .dialog-head .ic { width: 46px; height: 46px; border-radius: 12px; background: rgba(255,255,255,.16); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .dialog-head .ic svg { width: 24px; height: 24px; }
+  .dialog-head h2 { margin: 0; font-size: 19px; font-weight: 700; }
+  .dialog-head p { margin: 2px 0 0; font-size: 13px; color: rgba(255,255,255,.82); }
+  .dialog-head .x { margin-left: auto; width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(255,255,255,.16); color: #fff; cursor: pointer; font-size: 16px; }
+  .dialog-body { padding: 6px 22px 4px; overflow-y: auto; }
+  .sec-label { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--fg-muted); margin: 16px 0 2px; }
+  .row { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .row:last-child { border-bottom: 0; }
+  .row .info { flex: 1; min-width: 0; }
+  .row .info .t { font-size: 14.5px; font-weight: 600; }
+  .row .info .d { font-size: 12.5px; color: var(--fg-muted); margin-top: 2px; }
+
+  /* shadcn 风格开关 */
+  .switch { width: 40px; height: 23px; border-radius: 999px; background: #d8d4cc; border: 0; cursor: pointer; position: relative; flex: 0 0 auto; transition: background .15s; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 19px; height: 19px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform .15s; }
+  .switch.on { background: var(--accent); }
+  .switch.on::after { transform: translateX(17px); }
+
+  /* 静态外观滑块(仅占位展示) */
+  .slider { width: 200px; height: 5px; border-radius: 3px; background: var(--hover); position: relative; flex: 0 0 auto; }
+  .slider i { position: absolute; left: 60%; top: 50%; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); transform: translate(-50%,-50%); box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+  .slider-val { width: 52px; text-align: right; font-size: 13px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+  .dialog-foot { display: flex; justify-content: flex-end; padding: 12px 22px; border-top: 1px solid var(--border); }
+  .ghost-btn { border: 0; background: transparent; color: var(--fg-muted); font-size: 13px; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
+  .ghost-btn:hover { background: var(--hover); color: var(--fg); }
+
+  .hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); background: rgba(20,18,15,.86); color: #fff; font-size: 12px; padding: 7px 14px; border-radius: 999px; z-index: 30; }
+  .hint b { color: #ffd479; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="window" id="win">
+    <div class="traffic"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+      <button class="tbtn icon" title="打开文件">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>
+      </button>
+      <span class="filename">使用指南.md</span>
+      <span class="dot-dirty" title="未保存"></span>
+
+      <span class="spacer"></span>
+
+      <div class="segmented" id="modeSeg">
+        <button class="on" data-tip="查看" aria-label="查看"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <button data-tip="所见即所得" aria-label="所见即所得"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+        <button data-tip="分栏" aria-label="分栏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1.5"/><line x1="12" y1="4" x2="12" y2="20"/></svg></button>
+      </div>
+
+      <button class="tbtn icon" id="gear" title="设置 (⌘,)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+
+    <!-- 主体 -->
+    <div class="body" id="bodyEl">
+      <!-- 目录面板 -->
+      <aside class="toc">
+        <div class="toc-head">
+          <span class="toc-title">目录</span>
+          <button class="toc-collapse" id="tocToggleAll" title="全部展开 / 折叠">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 4 12 8 16 4"/><polyline points="8 20 12 16 16 20"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
+          </button>
+          <button class="toc-collapse" id="tocCollapse" title="收起目录">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="collapseChevron"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <nav class="toc-list" id="tocList">
+          <div class="toc-row lvl-1" data-level="1">
+            <button class="toc-caret" aria-label="折叠 / 展开"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <a class="toc-link active" data-target="s-intro">Markknife 使用指南</a>
+          </div>
+          <div class="toc-row lvl-2" data-level="2">
+            <button class="toc-caret" aria-label="折叠 / 展开"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <a class="toc-link" data-target="s-start">快速开始</a>
+          </div>
+          <div class="toc-row lvl-3" data-level="3">
+            <button class="toc-caret" aria-label="折叠 / 展开"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <a class="toc-link" data-target="s-open">打开文件</a>
+          </div>
+          <div class="toc-row lvl-3" data-level="3">
+            <button class="toc-caret" aria-label="折叠 / 展开"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <a class="toc-link" data-target="s-modes">三种模式</a>
+          </div>
+          <div class="toc-row lvl-2" data-level="2">
+            <button class="toc-caret" aria-label="折叠 / 展开"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <a class="toc-link" data-target="s-edit">编辑</a>
+          </div>
+          <div class="toc-row lvl-3" data-level="3">
+            <button class="toc-caret" aria-label="折叠 / 展开"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <a class="toc-link" data-target="s-wysiwyg">所见即所得</a>
+          </div>
+          <div class="toc-row lvl-3" data-level="3">
+            <button class="toc-caret" aria-label="折叠 / 展开"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <a class="toc-link" data-target="s-split">分栏模式</a>
+          </div>
+          <div class="toc-row lvl-2" data-level="2">
+            <button class="toc-caret" aria-label="折叠 / 展开"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <a class="toc-link" data-target="s-toc">目录面板</a>
+          </div>
+          <div class="toc-row lvl-2" data-level="2">
+            <button class="toc-caret" aria-label="折叠 / 展开"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <a class="toc-link" data-target="s-settings">设置</a>
+          </div>
+          <div class="toc-row lvl-3" data-level="3">
+            <button class="toc-caret" aria-label="折叠 / 展开"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <a class="toc-link" data-target="s-appearance">外观</a>
+          </div>
+          <div class="toc-row lvl-3" data-level="3">
+            <button class="toc-caret" aria-label="折叠 / 展开"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <a class="toc-link" data-target="s-update">自动更新</a>
+          </div>
+        </nav>
+      </aside>
+
+      <!-- 内容 -->
+      <div class="content-wrap" id="contentWrap">
+        <article class="content">
+          <h1 id="s-intro">Markknife 使用指南</h1>
+          <p class="lead">一个简洁的单文件 Markdown 查看 / 编辑器。本文用来演示目录面板。</p>
+          <h2 id="s-start">快速开始</h2>
+          <p>从工具栏的「打开文件」选择一个 <code>.md</code>,或直接用系统「打开方式」双击打开。默认进入查看模式。</p>
+          <h3 id="s-open">打开文件</h3>
+          <p>支持选择单个 Markdown 文件;也支持把本应用设为 <code>.md</code> 的打开方式。</p>
+          <h3 id="s-modes">三种模式</h3>
+          <p>查看(只读)、编辑·所见即所得、编辑·分栏。三者共享同一份内容。</p>
+          <h2 id="s-edit">编辑</h2>
+          <p>切换到编辑后可选两种子模式。</p>
+          <h3 id="s-wysiwyg">所见即所得</h3>
+          <p>富文本直接编辑,数学公式、Mermaid、代码高亮、图片均支持。</p>
+          <h3 id="s-split">分栏模式</h3>
+          <p>左侧源码、右侧实时预览,可一键左右互换。</p>
+          <h2 id="s-toc">目录面板</h2>
+          <p>右(或左)侧的目录由文档标题自动生成,点击可跳转,滚动时高亮当前章节。可随时收起,腾出空间。</p>
+          <h2 id="s-settings">设置</h2>
+          <p>按 <code>⌘ ,</code> 打开设置。</p>
+          <h3 id="s-appearance">外观</h3>
+          <p>内容最大宽度、字号、行高。</p>
+          <h3 id="s-update">自动更新</h3>
+          <p>启动时静默检查,也可在设置里手动「检查更新」。</p>
+        </article>
+      </div>
+    </div>
+
+    <!-- 收起后的重新展开细条 -->
+    <button class="reopen" id="reopen" title="展开目录">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      <span class="vtext">目录</span>
+    </button>
+
+    <!-- 设置弹窗 -->
+    <div class="backdrop" id="backdrop">
+      <div class="dialog">
+        <div class="dialog-head">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg></div>
+          <div>
+            <h2>设置</h2>
+            <p>自定义你的阅读体验</p>
+          </div>
+          <button class="x" id="closeSettings">✕</button>
+        </div>
+        <div class="dialog-body">
+          <!-- 新增:目录 -->
+          <div class="sec-label">目录</div>
+          <div class="row">
+            <div class="info">
+              <div class="t">默认显示目录面板</div>
+              <div class="d">打开文件时是否默认展开目录(也可随时用工具栏按钮 ⌘\ 收起 / 展开)</div>
+            </div>
+            <button class="switch on" id="swShowToc" role="switch" aria-checked="true"></button>
+          </div>
+          <div class="row">
+            <div class="info">
+              <div class="t">目录位置</div>
+              <div class="d">目录面板显示在内容的哪一侧</div>
+            </div>
+            <div class="segmented" id="posSeg">
+              <button class="on" data-pos="left">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="7" height="16" rx="1"/><rect x="12" y="4" width="9" height="16" rx="1" opacity=".35"/></svg>左侧
+              </button>
+              <button data-pos="right">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="9" height="16" rx="1" opacity=".35"/><rect x="14" y="4" width="7" height="16" rx="1"/></svg>右侧
+              </button>
+            </div>
+          </div>
+
+          <!-- 新增:编辑(分栏方向,取代工具栏的「互换」按钮) -->
+          <div class="sec-label">编辑</div>
+          <div class="row">
+            <div class="info">
+              <div class="t">分栏方向</div>
+              <div class="d">分栏模式下编辑区与预览区的左右排列</div>
+            </div>
+            <div class="segmented" id="splitSeg">
+              <button class="on" data-split="edit-left">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="9" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1" opacity=".35"/></svg>编辑·预览
+              </button>
+              <button data-split="preview-left">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="7" height="16" rx="1" opacity=".35"/><rect x="12" y="4" width="9" height="16" rx="1"/></svg>预览·编辑
+              </button>
+            </div>
+          </div>
+
+          <!-- 既有:外观(占位展示,说明新区块的上下文位置) -->
+          <div class="sec-label">外观</div>
+          <div class="row">
+            <div class="info"><div class="t">最大宽度</div><div class="d">限制内容宽度以提高可读性</div></div>
+            <span class="slider-val">720px</span>
+            <div class="slider"><i></i></div>
+          </div>
+          <div class="row">
+            <div class="info"><div class="t">字体大小</div></div>
+            <span class="slider-val">15px</span>
+            <div class="slider"><i style="left:45%"></i></div>
+          </div>
+          <div class="row">
+            <div class="info"><div class="t">行高</div></div>
+            <span class="slider-val">1.7</span>
+            <div class="slider"><i style="left:55%"></i></div>
+          </div>
+        </div>
+        <div class="dialog-foot"><button class="ghost-btn">恢复默认</button></div>
+      </div>
+    </div>
+
+    <div class="hint">试试:<b>⌘\\</b> 收起/展开整个目录 · 点标题左侧<b>三角折叠子级</b> · 点齿轮切左右 · 点目录项跳转</div>
+  </div>
+
+<script>
+  const win = document.getElementById('win');
+  const bodyEl = document.getElementById('bodyEl');
+  const tocCollapse = document.getElementById('tocCollapse');
+  const reopen = document.getElementById('reopen');
+  const collapseChevron = document.getElementById('collapseChevron');
+
+  let collapsed = false;
+  let position = 'left';
+
+  function applyCollapsed() {
+    win.classList.toggle('toc-collapsed', collapsed);
+    swShowToc.classList.toggle('on', !collapsed);
+    swShowToc.setAttribute('aria-checked', String(!collapsed));
+  }
+  function setCollapsed(v) { collapsed = v; applyCollapsed(); }
+  function toggleCollapsed() { setCollapsed(!collapsed); }
+
+  function applyPosition() {
+    bodyEl.classList.toggle('toc-right', position === 'right');
+    win.classList.toggle('body-right', position === 'right');
+    // 收起细条 / 收起方向的箭头随位置翻转
+    collapseChevron.style.transform = position === 'right' ? 'scaleX(-1)' : '';
+    reopen.querySelector('svg').style.transform = position === 'right' ? 'scaleX(-1)' : '';
+    document.querySelectorAll('#posSeg button').forEach(b => b.classList.toggle('on', b.dataset.pos === position));
+  }
+  function setPosition(p) { position = p; applyPosition(); }
+
+  tocCollapse.addEventListener('click', () => setCollapsed(true));
+  reopen.addEventListener('click', () => setCollapsed(false));
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === '\\') { e.preventDefault(); toggleCollapsed(); }
+    if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); backdrop.classList.add('show'); }
+  });
+
+  // 设置弹窗
+  const backdrop = document.getElementById('backdrop');
+  document.getElementById('gear').addEventListener('click', () => backdrop.classList.add('show'));
+  document.getElementById('closeSettings').addEventListener('click', () => backdrop.classList.remove('show'));
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.classList.remove('show'); });
+
+  // 设置:默认显示目录 开关(此处直接联动收起态做演示)
+  const swShowToc = document.getElementById('swShowToc');
+  swShowToc.addEventListener('click', () => setCollapsed(swShowToc.classList.contains('on')));
+
+  // 设置:目录位置 分段控件
+  document.getElementById('posSeg').addEventListener('click', (e) => {
+    const btn = e.target.closest('button'); if (btn) setPosition(btn.dataset.pos);
+  });
+
+  // 设置:分栏方向 分段控件(纯演示)
+  document.getElementById('splitSeg').addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (btn) document.querySelectorAll('#splitSeg button').forEach(b => b.classList.toggle('on', b === btn));
+  });
+
+  // 模式分段(纯演示)
+  document.getElementById('modeSeg').addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (btn) document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('on', b === btn));
+  });
+
+  // 目录:点击跳转 + 滚动高亮(scrollspy)
+  const contentWrap = document.getElementById('contentWrap');
+  const links = [...document.querySelectorAll('.toc-link')];
+  links.forEach(a => a.addEventListener('click', () => {
+    const el = document.getElementById(a.dataset.target);
+    if (el) contentWrap.scrollTo({ top: el.offsetTop - 24, behavior: 'smooth' });
+  }));
+  const targets = links.map(a => document.getElementById(a.dataset.target));
+  contentWrap.addEventListener('scroll', () => {
+    const top = contentWrap.scrollTop + 80;
+    let idx = 0;
+    targets.forEach((t, i) => { if (t && t.offsetTop <= top) idx = i; });
+    links.forEach((a, i) => a.classList.toggle('active', i === idx));
+  });
+
+  // —— 目录树:折叠 / 展开子标题 ——
+  const tocRows = [...document.querySelectorAll('.toc-row')];
+  const tocLevels = tocRows.map(r => +r.dataset.level);
+  const tocCollapsedSet = new Set();
+  tocRows.forEach((row, i) => {
+    const hasChild = i + 1 < tocLevels.length && tocLevels[i + 1] > tocLevels[i];
+    const caret = row.querySelector('.toc-caret');
+    if (!hasChild) {
+      caret.classList.add('leaf'); // 叶子节点:占位对齐,无折叠功能
+    } else {
+      caret.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (tocCollapsedSet.has(i)) tocCollapsedSet.delete(i); else tocCollapsedSet.add(i);
+        renderTocTree();
+      });
+    }
+  });
+  function renderTocTree() {
+    let hideUntil = 0; // >0 表示正在隐藏 level 大于该值的后代
+    tocRows.forEach((row, i) => {
+      const lvl = tocLevels[i];
+      let hidden = false;
+      if (hideUntil && lvl > hideUntil) {
+        hidden = true; // 仍在某个折叠节点的后代范围内
+      } else {
+        hideUntil = tocCollapsedSet.has(i) ? lvl : 0; // 退出折叠区;若本节点折叠则开启新的隐藏区
+      }
+      row.classList.toggle('hidden', hidden);
+      row.classList.toggle('collapsed', tocCollapsedSet.has(i));
+    });
+  }
+  // 头部「全部展开 / 折叠」:有任一父节点展开则全部折叠,否则全部展开。
+  document.getElementById('tocToggleAll').addEventListener('click', () => {
+    const isParent = (i) => i + 1 < tocLevels.length && tocLevels[i + 1] > tocLevels[i];
+    const anyExpanded = tocRows.some((_, i) => isParent(i) && !tocCollapsedSet.has(i));
+    tocCollapsedSet.clear();
+    if (anyExpanded) tocRows.forEach((_, i) => { if (isParent(i)) tocCollapsedSet.add(i); });
+    renderTocTree();
+  });
+  renderTocTree();
+
+  applyCollapsed(); applyPosition();
+</script>
+</body>
+</html>

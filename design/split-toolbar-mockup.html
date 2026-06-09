@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Markknife · 分栏编辑功能栏 UI 原型</title>
+<style>
+  :root {
+    --bg: #f7f6f3; --content: #ffffff; --fg: #34302a; --fg-muted: #94908a; --fg-soft: #b6b2ab;
+    --border: #e9e6e0; --hover: #f0eee9; --accent: #4f6bed; --accent-soft: #ecefff;
+    --code-bg: #f6f5f1; --toolbar-h: 52px; --fmt-h: 40px;
+    font-synthesis: none; -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: #e3e1dc; color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; display: flex; align-items: center; justify-content: center; padding: 28px; }
+
+  .window { width: min(1180px, 100%); height: min(760px, calc(100vh - 56px)); background: var(--bg); border-radius: 14px; box-shadow: 0 24px 60px rgba(0,0,0,.28), 0 2px 8px rgba(0,0,0,.14); overflow: hidden; display: flex; flex-direction: column; position: relative; }
+
+  /* 工具栏 */
+  .toolbar { height: var(--toolbar-h); flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 0 14px 0 84px; background: var(--bg); border-bottom: 1px solid var(--border); }
+  .traffic { position: absolute; top: 19px; left: 18px; display: flex; gap: 8px; } .traffic i { width: 12px; height: 12px; border-radius: 50%; display: block; } .traffic .r { background: #ff5f57; } .traffic .y { background: #febc2e; } .traffic .g { background: #28c840; }
+  .tbtn { display: inline-flex; align-items: center; height: 32px; padding: 0 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--fg); cursor: pointer; } .tbtn:hover { background: var(--hover); } .tbtn svg { width: 17px; height: 17px; }
+  .filename { font-size: 13px; font-weight: 600; margin-left: 2px; } .spacer { flex: 1; }
+  .segmented { display: inline-flex; background: var(--hover); border: 1px solid var(--border); border-radius: 9px; padding: 2px; }
+  #modeSeg button { width: 34px; height: 28px; padding: 0; border: 0; background: transparent; color: var(--fg-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; } #modeSeg button.on { background: #fff; color: var(--accent); box-shadow: 0 1px 2px rgba(0,0,0,.08); } #modeSeg button svg { width: 16px; height: 16px; }
+
+  /* —— 分栏主体 —— */
+  .body { flex: 1; display: flex; min-height: 0; }
+  .pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .pane.source { border-right: 1px solid var(--border); }
+  .pane-divider { width: 1px; background: var(--border); }
+
+  /* —— 编辑功能栏(只在分栏的源码侧顶部) —— */
+  .fmtbar {
+    height: var(--fmt-h); flex: 0 0 auto;
+    display: flex; align-items: center; gap: 2px;
+    padding: 0 8px; background: var(--bg); border-bottom: 1px solid var(--border);
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .fmtbar::-webkit-scrollbar { height: 0; }
+  .fmt {
+    position: relative; flex: 0 0 auto;
+    width: 30px; height: 28px; padding: 0; border: 0; border-radius: 7px;
+    background: transparent; color: var(--fg-muted); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background .12s, color .12s;
+  }
+  .fmt:hover { background: var(--hover); color: var(--fg); }
+  .fmt:active { background: var(--accent-soft); color: var(--accent); }
+  .fmt svg { width: 16px; height: 16px; }
+  .fmt .txt { font-size: 13px; font-weight: 700; }
+  .fmt-sep { width: 1px; height: 18px; background: var(--border); margin: 0 5px; flex: 0 0 auto; }
+  /* 悬停文字提示(延迟弹出,与全局风格一致) */
+  .fmt::after {
+    content: attr(data-tip); position: absolute; top: calc(100% + 7px); left: 50%;
+    transform: translateX(-50%) translateY(2px); white-space: nowrap;
+    background: #2b2722; color: #fff; font-size: 11.5px; line-height: 1; padding: 5px 8px; border-radius: 6px;
+    opacity: 0; pointer-events: none; transition: opacity .12s, transform .12s; box-shadow: 0 4px 14px rgba(0,0,0,.2); z-index: 60;
+  }
+  .fmt:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); transition-delay: .55s; }
+
+  /* 源码区(CodeMirror 风格) */
+  .src { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 22px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px; line-height: 1.7; color: #3a372f; white-space: pre-wrap; }
+  .src .h { color: #b3531d; font-weight: 700; } .src .b { color: #34302a; font-weight: 700; } .src .i { color: #6a4ec2; font-style: italic; } .src .c { color: #1f9d72; } .src .l { color: var(--accent); } .src .m { color: #94908a; }
+
+  /* 预览区 */
+  .prev-head { height: var(--fmt-h); flex: 0 0 auto; display: flex; align-items: center; padding: 0 16px; background: var(--bg); border-bottom: 1px solid var(--border); }
+  .prev-head .lbl { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-muted); }
+  .prev { flex: 1; min-height: 0; overflow-y: auto; }
+  .prev-inner { max-width: 640px; margin: 0 auto; padding: 22px 40px 80px; }
+  .prev h1 { font-size: 26px; font-weight: 700; margin: 0 0 8px; } .prev h2 { font-size: 19px; font-weight: 650; margin: 24px 0 8px; }
+  .prev p { font-size: 15px; line-height: 1.75; color: #4f4b44; margin: 9px 0; }
+  .prev strong { font-weight: 700; } .prev em { font-style: italic; }
+  .prev a { color: var(--accent); text-decoration: none; }
+  .prev code { background: var(--code-bg); padding: 1px 6px; border-radius: 5px; font-size: 13px; font-family: ui-monospace, Menlo, monospace; }
+  .prev ul { margin: 9px 0; padding-left: 22px; } .prev li { font-size: 15px; line-height: 1.7; color: #4f4b44; }
+  .prev blockquote { margin: 12px 0; padding: 4px 14px; border-left: 3px solid var(--border); color: var(--fg-muted); }
+  .prev pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 13px; font-family: ui-monospace, Menlo, monospace; }
+
+  .hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); background: rgba(20,18,15,.86); color: #fff; font-size: 12px; padding: 7px 14px; border-radius: 999px; }
+  .hint b { color: #ffd479; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="window">
+    <div class="traffic"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+
+    <!-- 工具栏:分栏模式已选中 -->
+    <div class="toolbar">
+      <button class="tbtn" title="打开文件"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg></button>
+      <span class="filename">使用指南.md</span>
+      <span class="spacer"></span>
+      <div class="segmented" id="modeSeg">
+        <button title="查看"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <button title="所见即所得"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+        <button class="on" title="分栏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1.5"/><line x1="12" y1="4" x2="12" y2="20"/></svg></button>
+      </div>
+    </div>
+
+    <!-- 分栏主体:左 源码(带功能栏) + 右 预览 -->
+    <div class="body">
+      <div class="pane source">
+        <!-- Markdown 编辑功能栏:常用语法一键插入 -->
+        <div class="fmtbar">
+          <button class="fmt" data-tip="撤销 ⌘Z"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg></button>
+          <button class="fmt" data-tip="重做 ⌘⇧Z"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg></button>
+          <span class="fmt-sep"></span>
+          <button class="fmt" data-tip="标题 1"><span class="txt">H1</span></button>
+          <button class="fmt" data-tip="标题 2"><span class="txt">H2</span></button>
+          <button class="fmt" data-tip="标题 3"><span class="txt">H3</span></button>
+          <span class="fmt-sep"></span>
+          <button class="fmt" data-tip="加粗 ⌘B"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h8a4 4 0 0 1 0 8H6zM6 12h9a4 4 0 0 1 0 8H6z"/></svg></button>
+          <button class="fmt" data-tip="斜体 ⌘I"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg></button>
+          <button class="fmt" data-tip="删除线"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4H9a3 3 0 0 0-2.8 4M14 12a4 4 0 0 1 0 8H6"/><line x1="4" y1="12" x2="20" y2="12"/></svg></button>
+          <button class="fmt" data-tip="行内代码"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></button>
+          <span class="fmt-sep"></span>
+          <button class="fmt" data-tip="引用"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21c3 0 7-1 7-8V5H3v7h4M14 21c3 0 7-1 7-8V5h-7v7h4"/></svg></button>
+          <button class="fmt" data-tip="代码块"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><polyline points="8 10 6 12 8 14"/><polyline points="16 10 18 12 16 14"/></svg></button>
+          <span class="fmt-sep"></span>
+          <button class="fmt" data-tip="无序列表"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1.2" fill="currentColor"/><circle cx="3.5" cy="12" r="1.2" fill="currentColor"/><circle cx="3.5" cy="18" r="1.2" fill="currentColor"/></svg></button>
+          <button class="fmt" data-tip="有序列表"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M4 16h2v1H4v1h2v1H4"/></svg></button>
+          <button class="fmt" data-tip="任务列表"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="6" height="6" rx="1.5"/><path d="M4.5 8l1 1 2-2.2"/><rect x="3" y="14" width="6" height="6" rx="1.5"/><line x1="12" y1="8" x2="21" y2="8"/><line x1="12" y1="17" x2="21" y2="17"/></svg></button>
+          <span class="fmt-sep"></span>
+          <button class="fmt" data-tip="链接 ⌘K"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg></button>
+          <button class="fmt" data-tip="图片"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></button>
+          <button class="fmt" data-tip="表格"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="4" x2="9" y2="20"/></svg></button>
+          <button class="fmt" data-tip="分割线"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/></svg></button>
+        </div>
+        <!-- 源码(CodeMirror 风格高亮示意) -->
+        <div class="src"><span class="h"># Markknife 使用指南</span>
+
+一个简洁的单文件 Markdown 查看 / 编辑器。
+
+<span class="h">## 快速开始</span>
+
+从工具栏点 <span class="b">**打开文件**</span>,或用系统 <span class="i">*打开方式*</span> 双击 <span class="c">`.md`</span>。
+
+- 查看(只读)
+- 所见即所得
+- 分栏 + 实时预览
+
+> 提示:分栏模式下,顶部功能栏一键插入常用语法。
+
+[Markknife 主页](<span class="l">https://github.com/…</span>)</div>
+      </div>
+
+      <div class="pane">
+        <div class="prev-head"><span class="lbl">预览</span></div>
+        <div class="prev">
+          <div class="prev-inner">
+            <h1>Markknife 使用指南</h1>
+            <p>一个简洁的单文件 Markdown 查看 / 编辑器。</p>
+            <h2>快速开始</h2>
+            <p>从工具栏点 <strong>打开文件</strong>,或用系统 <em>打开方式</em> 双击 <code>.md</code>。</p>
+            <ul><li>查看(只读)</li><li>所见即所得</li><li>分栏 + 实时预览</li></ul>
+            <blockquote>提示:分栏模式下,顶部功能栏一键插入常用语法。</blockquote>
+            <p><a href="#">Markknife 主页</a></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hint">分栏模式源码侧顶部出现 <b>编辑功能栏</b> · 选中文字点 <b>B / I</b> 包裹 · 点 <b>H1/列表/表格</b> 插入语法</div>
+  </div>
+</body>
+</html>

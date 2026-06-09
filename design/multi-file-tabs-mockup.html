@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Markknife · 多文件标签 UI 原型</title>
+<style>
+  :root {
+    --bg: #f7f6f3;
+    --content: #ffffff;
+    --fg: #34302a;
+    --fg-muted: #94908a;
+    --fg-soft: #b6b2ab;
+    --border: #e9e6e0;
+    --hover: #f0eee9;
+    --accent: #4f6bed;
+    --accent-soft: #ecefff;
+    --radius: 10px;
+    --toolbar-h: 52px;
+    --tabbar-h: 40px;
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #e3e1dc;
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center; justify-content: center; padding: 28px;
+  }
+
+  /* —— 模拟应用窗口 —— */
+  .window {
+    width: min(1180px, 100%); height: min(760px, calc(100vh - 56px));
+    background: var(--bg); border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0,0,0,.28), 0 2px 8px rgba(0,0,0,.14);
+    overflow: hidden; display: flex; flex-direction: column; position: relative;
+  }
+
+  /* —— 顶部工具栏(文件名已移入标签栏,这里只留打开 / 模式 / 设置) —— */
+  .toolbar {
+    height: var(--toolbar-h); flex: 0 0 auto;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 14px 0 84px;
+    background: var(--bg); border-bottom: 1px solid var(--border);
+    -webkit-user-select: none; user-select: none;
+  }
+  .traffic { position: absolute; top: 19px; left: 18px; display: flex; gap: 8px; }
+  .traffic i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .traffic .r { background: #ff5f57; } .traffic .y { background: #febc2e; } .traffic .g { background: #28c840; }
+
+  .tbtn {
+    display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 8px;
+    border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--fg);
+    font-size: 13px; cursor: pointer; transition: background .12s;
+  }
+  .tbtn:hover { background: var(--hover); }
+  .tbtn svg { width: 17px; height: 17px; }
+  .spacer { flex: 1; }
+
+  .segmented { display: inline-flex; background: var(--hover); border: 1px solid var(--border); border-radius: 9px; padding: 2px; }
+  #modeSeg button { position: relative; width: 34px; height: 28px; padding: 0; border: 0; background: transparent; color: var(--fg-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; transition: background .12s, color .12s; }
+  #modeSeg button:hover { color: var(--fg); }
+  #modeSeg button.on { background: #fff; color: var(--accent); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  #modeSeg button svg { width: 16px; height: 16px; }
+
+  /* —— 标签栏:同一窗口里打开的多个文件,顶部横向切换 —— */
+  .tabbar {
+    height: var(--tabbar-h); flex: 0 0 auto;
+    display: flex; align-items: flex-end; gap: 2px;
+    padding: 0 6px; background: var(--bg); border-bottom: 1px solid var(--border);
+    overflow-x: auto; scrollbar-width: thin;
+  }
+  .tabbar::-webkit-scrollbar { height: 0; }
+  .tab {
+    position: relative; flex: 0 0 auto;
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 30px; max-width: 190px; padding: 0 8px 0 12px;
+    border: 1px solid transparent; border-bottom: 0;
+    border-radius: 9px 9px 0 0; background: transparent;
+    color: var(--fg-muted); font-size: 13px; cursor: pointer;
+    transition: background .12s, color .12s;
+  }
+  .tab:hover { background: var(--hover); color: var(--fg); }
+  .tab.active { background: var(--content); color: var(--fg); border-color: var(--border); font-weight: 600; }
+  /* 选中标签顶部一条强调线,并向下"压"住内容边界 */
+  .tab.active::before { content: ""; position: absolute; left: -1px; right: -1px; top: -1px; height: 2px; border-radius: 2px 2px 0 0; background: var(--accent); }
+  .tab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: var(--content); }
+  .tab .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* 文件类型小点(.md 用蓝点示意) */
+  .tab .ic { width: 6px; height: 6px; border-radius: 2px; background: var(--accent); flex: none; opacity: .55; }
+  .tab.active .ic { opacity: 1; }
+  /* 关闭 / 未保存:平时显示未保存圆点,悬停时变成关闭叉 */
+  .tab .tail { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--fg-soft); }
+  .tab .tail .x { display: none; } .tab .tail .dot { display: block; width: 7px; height: 7px; border-radius: 50%; background: var(--fg-soft); }
+  .tab:hover .tail .x, .tab.active .tail .x { display: block; } .tab:hover .tail .dot, .tab.active .tail .dot { display: none; }
+  .tab .tail:hover { background: var(--hover); color: var(--fg); }
+  .tab.dirty:not(:hover):not(.active) .tail .dot { background: var(--accent); }   /* 未保存:醒目点 */
+  .tab .tail svg { width: 13px; height: 13px; }
+
+  .tab-add { flex: 0 0 auto; width: 28px; height: 28px; margin-bottom: 1px; margin-left: 2px; border: 0; border-radius: 7px; background: transparent; color: var(--fg-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+  .tab-add:hover { background: var(--hover); color: var(--fg); }
+  .tab-add svg { width: 16px; height: 16px; }
+
+  /* —— 主体 —— */
+  .body { flex: 1; display: flex; min-height: 0; }
+  .toc { width: 220px; flex: 0 0 220px; background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  .toc-head { height: 38px; display: flex; align-items: center; padding: 0 16px; }
+  .toc-title { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-muted); }
+  .toc-list { padding: 4px 8px; font-size: 13px; }
+  .toc-list a { display: block; padding: 6px 8px; border-radius: 7px; color: var(--fg-muted); text-decoration: none; }
+  .toc-list a.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .toc-list a.sub { padding-left: 22px; font-size: 12.5px; }
+
+  .content-wrap { flex: 1; min-width: 0; background: var(--bg); overflow-y: auto; }
+  .content { max-width: 720px; margin: 0 auto; padding: 36px 56px 120px; background: var(--content); min-height: 100%; }
+  .content h1 { font-size: 28px; font-weight: 700; margin: 0 0 8px; }
+  .content h2 { font-size: 20px; font-weight: 650; margin: 28px 0 8px; }
+  .content p { font-size: 15px; line-height: 1.75; color: #4f4b44; margin: 10px 0; }
+  .content code { background: var(--hover); padding: 1px 6px; border-radius: 5px; font-size: 13px; font-family: ui-monospace, Menlo, monospace; }
+
+  .hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); background: rgba(20,18,15,.86); color: #fff; font-size: 12px; padding: 7px 14px; border-radius: 999px; }
+  .hint b { color: #ffd479; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="window">
+    <div class="traffic"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+
+    <!-- 工具栏:文件名移入标签栏后,这里只保留 打开 / 三模式 / 设置 -->
+    <div class="toolbar">
+      <button class="tbtn" title="打开文件">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>
+      </button>
+      <span class="spacer"></span>
+      <div class="segmented" id="modeSeg">
+        <button class="on" title="查看"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <button title="所见即所得"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+        <button title="分栏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1.5"/><line x1="12" y1="4" x2="12" y2="20"/></svg></button>
+      </div>
+      <button class="tbtn" title="设置 (⌘,)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+
+    <!-- 标签栏:同一窗口里同时打开多个文件,点击切换;未保存显示圆点,悬停显示关闭叉 -->
+    <div class="tabbar" id="tabbar">
+      <div class="tab active" data-doc="guide">
+        <span class="ic"></span><span class="name">使用指南.md</span>
+        <span class="tail" title="关闭"><span class="dot"></span><svg class="x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+      </div>
+      <div class="tab dirty" data-doc="readme">
+        <span class="ic"></span><span class="name">README.md</span>
+        <span class="tail" title="未保存 / 关闭"><span class="dot"></span><svg class="x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+      </div>
+      <div class="tab" data-doc="notes">
+        <span class="ic"></span><span class="name">2026 季度计划 - 很长的文件名会省略.md</span>
+        <span class="tail" title="关闭"><span class="dot"></span><svg class="x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+      </div>
+      <div class="tab" data-doc="math">
+        <span class="ic"></span><span class="name">公式速查.md</span>
+        <span class="tail" title="关闭"><span class="dot"></span><svg class="x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+      </div>
+      <button class="tab-add" title="打开新文件 (⌘O / ⌘T)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+
+    <!-- 主体:目录 + 内容(随标签切换;此处为静态示意) -->
+    <div class="body">
+      <aside class="toc">
+        <div class="toc-head"><span class="toc-title">目录</span></div>
+        <nav class="toc-list">
+          <a class="on">使用指南</a>
+          <a class="sub">快速开始</a>
+          <a class="sub">三种模式</a>
+          <a>编辑</a>
+          <a class="sub">所见即所得</a>
+          <a class="sub">分栏模式</a>
+        </nav>
+      </aside>
+      <div class="content-wrap">
+        <article class="content" id="docBody">
+          <h1>Markknife 使用指南</h1>
+          <p>顶部标签栏里可以同时打开多个 <code>.md</code>,点击标签即可在同一窗口内切换。再次用「打开文件」或 <code>⌘T</code> 会新增一个标签而不是替换当前文件。</p>
+          <h2>标签操作</h2>
+          <p>未保存的文件在标签右侧显示一个小圆点;鼠标悬停时圆点变为关闭叉。可拖拽标签重新排序(规划中)。</p>
+        </article>
+      </div>
+    </div>
+
+    <div class="hint">点击<b>标签</b>切换文件 · <b>⌘T</b> 新开标签 · <b>⌘W</b> 关闭当前 · <b>⌘1~9</b> 跳到第 N 个标签</div>
+  </div>
+
+<script>
+  // 标签切换(纯演示):点击标签设为激活;点尾部叉号"关闭"该标签
+  const tabbar = document.getElementById('tabbar');
+  const DOCS = {
+    guide: { h: 'Markknife 使用指南', p: '顶部标签栏里可以同时打开多个 .md,点击标签即可在同一窗口内切换。' },
+    readme: { h: 'README', p: '这个文件有未保存改动,所以标签上显示醒目圆点。按 ⌘S 保存后圆点消失。' },
+    notes: { h: '2026 季度计划', p: '文件名过长时标签内自动省略,完整名称可在悬停提示中查看。' },
+    math: { h: '公式速查', p: '数学公式、Mermaid、代码高亮在任意标签里都可用。' },
+  };
+  const docBody = document.getElementById('docBody');
+  function render(doc) { const d = DOCS[doc]; if (d) docBody.innerHTML = '<h1>'+d.h+'</h1><p>'+d.p+'</p>'; }
+  tabbar.addEventListener('click', (e) => {
+    const tail = e.target.closest('.tail');
+    const tab = e.target.closest('.tab');
+    if (tail && tab) { // 关闭
+      const wasActive = tab.classList.contains('active');
+      const next = tab.nextElementSibling?.classList.contains('tab') ? tab.nextElementSibling : tab.previousElementSibling;
+      tab.remove();
+      if (wasActive && next && next.classList.contains('tab')) { next.classList.add('active'); render(next.dataset.doc); }
+      return;
+    }
+    if (tab) {
+      [...tabbar.querySelectorAll('.tab')].forEach(t => t.classList.toggle('active', t === tab));
+      render(tab.dataset.doc);
+    }
+  });
+</script>
+</body>
+</html>

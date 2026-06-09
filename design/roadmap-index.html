@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Markknife · 设计稿索引</title>
+<style>
+  :root { --bg:#f7f6f3; --content:#fff; --fg:#34302a; --fg-muted:#94908a; --border:#e9e6e0; --hover:#f0eee9; --accent:#4f6bed; --accent-soft:#ecefff; --accent-blue:#5b86ff; --accent-purple:#8b5cf6; -webkit-font-smoothing:antialiased; }
+  * { box-sizing:border-box; } html,body { margin:0; height:100%; }
+  body { background:#e3e1dc; color:var(--fg); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; padding:40px 24px; }
+  .wrap { max-width:920px; margin:0 auto; }
+  header { display:flex; align-items:center; gap:14px; margin-bottom:8px; }
+  .logo { width:48px; height:48px; border-radius:13px; background:linear-gradient(135deg,var(--accent-blue),var(--accent-purple)); color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 8px 22px rgba(91,134,255,.35); }
+  .logo svg { width:26px; height:26px; }
+  h1 { font-size:22px; margin:0; } header p { margin:2px 0 0; color:var(--fg-muted); font-size:13.5px; }
+  .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; margin-top:24px; }
+  a.card { display:block; text-decoration:none; color:inherit; background:var(--content); border:1px solid var(--border); border-radius:14px; padding:18px 18px 16px; transition:border-color .12s, box-shadow .12s, transform .06s; }
+  a.card:hover { border-color:var(--accent); box-shadow:0 10px 28px rgba(0,0,0,.08); transform:translateY(-1px); }
+  .card .tag { display:inline-block; font-size:11px; font-weight:700; letter-spacing:.05em; color:var(--accent); background:var(--accent-soft); border-radius:999px; padding:2px 9px; margin-bottom:10px; }
+  .card .tag.done { color:#1f9d72; background:#e6f6ef; }
+  .card h2 { font-size:16px; margin:0 0 4px; } .card p { font-size:13px; color:var(--fg-muted); margin:0; line-height:1.6; }
+  footer { margin-top:28px; color:var(--fg-muted); font-size:12.5px; text-align:center; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+      <div><h1>Markknife 设计稿索引</h1><p>下一批功能的 UI 原型 — 全部沿用同一套视觉语言(米色纸张 + shadcn 风格)</p></div>
+    </header>
+
+    <div class="grid">
+      <a class="card" href="./homepage-ui-mockup.html"><span class="tag">主页 · 历史</span><h2>起始页 + 最近打开</h2><p>无文件时的欢迎页:品牌头、打开/新建、搜索、最近打开历史列表(悬停删除、清空全部、空状态)。</p></a>
+      <a class="card" href="./multi-file-tabs-mockup.html"><span class="tag">功能 ①</span><h2>多文件标签</h2><p>同一窗口打开多个 .md,顶部标签切换;未保存圆点、悬停关闭、⌘T 新开、⌘1~9 跳转。</p></a>
+      <a class="card" href="./settings-mockup.html"><span class="tag">功能 ②③④</span><h2>设置 · 样式 / 语言 / 快捷键</h2><p>左导航两栏式设置:阅读样式画廊、界面语言单选、可录制的自定义快捷键。</p></a>
+      <a class="card" href="./split-toolbar-mockup.html"><span class="tag">功能 ⑤</span><h2>分栏编辑功能栏</h2><p>分栏源码侧顶部的 Markdown 工具栏:标题、粗斜体、列表、引用、代码、链接、图片、表格等。</p></a>
+      <a class="card" href="./toc-ui-mockup.html"><span class="tag done">已实现</span><h2>目录面板</h2><p>文档标题自动生成的树形目录:滚动高亮、点击跳转、子级折叠、整体收起。</p></a>
+    </div>
+
+    <footer>原型为静态 HTML,仅用于对齐视觉与交互;实现时以这些设计稿为准 1:1 还原。</footer>
+  </div>
+</body>
+</html>

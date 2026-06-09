@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Markknife · 历史记录(启动页) UI 原型</title>
+<style>
+  :root {
+    --bg: #f7f6f3;
+    --content: #ffffff;
+    --fg: #34302a;
+    --fg-muted: #94908a;
+    --fg-soft: #b6b2ab;
+    --border: #e9e6e0;
+    --hover: #f0eee9;
+    --accent: #4f6bed;
+    --accent-soft: #ecefff;
+    --accent-blue: #5b86ff;
+    --accent-purple: #8b5cf6;
+    --danger: #e5484d;
+    --danger-soft: #fdecec;
+    --radius: 10px;
+    --toolbar-h: 52px;
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #e3e1dc;
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px;
+  }
+
+  /* —— 模拟应用窗口 —— */
+  .window {
+    width: min(1180px, 100%);
+    height: min(760px, calc(100vh - 56px));
+    background: var(--bg);
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0,0,0,.28), 0 2px 8px rgba(0,0,0,.14);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* —— 顶部工具栏(启动页:无打开文件,故工具简化) —— */
+  .toolbar {
+    height: var(--toolbar-h);
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px 0 84px; /* 左侧留出 macOS 红绿灯位 */
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .traffic { position: absolute; top: 19px; left: 18px; display: flex; gap: 8px; }
+  .traffic i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .traffic .r { background: #ff5f57; }
+  .traffic .y { background: #febc2e; }
+  .traffic .g { background: #28c840; }
+
+  .tbtn {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 32px; padding: 0 10px;
+    border: 1px solid transparent; border-radius: 8px;
+    background: transparent; color: var(--fg);
+    font-size: 13px; cursor: pointer;
+    transition: background .12s, border-color .12s;
+  }
+  .tbtn:hover { background: var(--hover); }
+  .tbtn.icon { padding: 0 8px; }
+  .tbtn svg { width: 17px; height: 17px; }
+  .brand-name { font-size: 13px; font-weight: 600; color: var(--fg-muted); margin-left: 2px; }
+  .spacer { flex: 1; }
+
+  /* —— 启动页主体 —— */
+  .start-wrap { flex: 1; min-height: 0; overflow-y: auto; display: flex; justify-content: center; }
+  .start {
+    width: 100%; max-width: 600px;
+    padding: 44px 32px 60px;
+    display: flex; flex-direction: column;
+  }
+
+  /* 品牌头部 */
+  .brand {
+    display: flex; flex-direction: column; align-items: center;
+    text-align: center; gap: 12px; margin-bottom: 26px;
+  }
+  .brand .logo {
+    width: 56px; height: 56px; border-radius: 15px;
+    display: flex; align-items: center; justify-content: center; color: #fff;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+    box-shadow: 0 8px 22px rgba(91,134,255,.35);
+  }
+  .brand .logo svg { width: 30px; height: 30px; }
+  .brand h1 { margin: 0; font-size: 23px; font-weight: 700; letter-spacing: -.01em; }
+  .brand p { margin: 0; font-size: 13.5px; color: var(--fg-muted); }
+
+  /* 主操作:打开 / 新建 */
+  .actions { display: flex; gap: 10px; margin-bottom: 22px; }
+  .act {
+    flex: 1; height: 42px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    border-radius: 10px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border); background: var(--content); color: var(--fg);
+    transition: background .12s, border-color .12s, box-shadow .12s, transform .06s;
+  }
+  .act svg { width: 17px; height: 17px; }
+  .act:hover { background: var(--hover); }
+  .act:active { transform: translateY(1px); }
+  .act.primary { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(79,107,237,.32); }
+  .act.primary:hover { background: #4259d8; }
+
+  /* 搜索框(shadcn 风格) */
+  .search {
+    display: flex; align-items: center; gap: 8px;
+    height: 40px; padding: 0 10px 0 12px;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--content);
+    transition: border-color .12s, box-shadow .12s;
+    margin-bottom: 18px;
+  }
+  .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .search > svg { width: 16px; height: 16px; color: var(--fg-soft); flex: 0 0 auto; }
+  .search input {
+    flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
+    font-size: 13.5px; color: var(--fg); font-family: inherit;
+  }
+  .search input::placeholder { color: var(--fg-soft); }
+  .search .clear {
+    flex: 0 0 auto; width: 22px; height: 22px; border: 0; border-radius: 6px;
+    background: var(--hover); color: var(--fg-muted); cursor: pointer;
+    display: none; align-items: center; justify-content: center; font-size: 12px;
+  }
+  .search .clear:hover { color: var(--fg); }
+  .search.has-text .clear { display: inline-flex; }
+
+  /* 区块标题行 */
+  .sec-head { display: flex; align-items: center; gap: 8px; padding: 0 4px 8px; }
+  .sec-head .label { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--fg-muted); }
+  .sec-head .count {
+    font-size: 11px; font-weight: 700; color: var(--fg-muted);
+    background: var(--hover); border-radius: 999px; padding: 1px 8px; line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+  }
+  .sec-head .spacer { flex: 1; }
+  .clear-all { border: 0; background: transparent; color: var(--fg-muted); font-size: 12.5px; padding: 5px 8px; border-radius: 7px; cursor: pointer; }
+  .clear-all:hover { background: var(--danger-soft); color: var(--danger); }
+
+  /* 历史列表 */
+  .list { display: flex; flex-direction: column; gap: 2px; }
+  .item {
+    position: relative;
+    display: flex; align-items: center; gap: 12px;
+    padding: 9px 10px; border-radius: 10px; cursor: pointer;
+    overflow: hidden;
+    transition: background .1s, max-height .26s ease, opacity .22s ease,
+                padding .26s ease, margin .26s ease;
+    max-height: 64px;
+  }
+  .item:hover { background: var(--hover); }
+  .item .fic {
+    flex: 0 0 auto; width: 36px; height: 36px; border-radius: 9px;
+    background: var(--accent-soft); color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .item .fic svg { width: 18px; height: 18px; }
+  .item .meta { flex: 1; min-width: 0; }
+  .item .name { font-size: 14px; font-weight: 600; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .name mark { background: #fff2ac; color: inherit; border-radius: 3px; padding: 0 1px; }
+  .item .path { font-size: 12px; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+  .item .path mark { background: #fff2ac; color: inherit; border-radius: 3px; padding: 0 1px; }
+
+  /* 右侧:默认显示时间,悬停切换为删除按钮(同位,无抖动) */
+  .item .right { flex: 0 0 auto; position: relative; width: 88px; height: 30px; }
+  .item .time {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end;
+    font-size: 12px; color: var(--fg-soft); font-variant-numeric: tabular-nums;
+    transition: opacity .12s; padding-right: 4px;
+  }
+  .item .del {
+    position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+    width: 30px; height: 30px; border: 0; border-radius: 8px;
+    background: transparent; color: var(--fg-muted); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity .12s, background .12s, color .12s;
+  }
+  .item .del svg { width: 16px; height: 16px; }
+  .item:hover .time { opacity: 0; }
+  .item:hover .del { opacity: 1; }
+  .item .del:hover { background: var(--danger-soft); color: var(--danger); }
+
+  /* 删除 / 清空时的折叠淡出动画 */
+  .item.removing { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; margin-top: -2px; pointer-events: none; }
+
+  /* 空状态 */
+  .empty { display: none; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 48px 20px; color: var(--fg-muted); }
+  .empty.show { display: flex; }
+  .empty .eic { width: 52px; height: 52px; border-radius: 14px; background: var(--hover); display: flex; align-items: center; justify-content: center; color: var(--fg-soft); }
+  .empty .eic svg { width: 26px; height: 26px; }
+  .empty .et { font-size: 14px; font-weight: 600; color: var(--fg); }
+  .empty .ed { font-size: 12.5px; }
+  .empty .ed b { color: var(--fg); font-weight: 600; }
+
+  .hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); background: rgba(20,18,15,.86); color: #fff; font-size: 12px; padding: 7px 14px; border-radius: 999px; z-index: 30; }
+  .hint b { color: #ffd479; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="window" id="win">
+    <div class="traffic"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+
+    <!-- 工具栏(启动页) -->
+    <div class="toolbar">
+      <button class="tbtn icon" title="打开文件">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>
+      </button>
+      <span class="brand-name">Markknife · 起始页</span>
+      <span class="spacer"></span>
+      <button class="tbtn icon" id="gear" title="设置 (⌘,)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+
+    <!-- 启动页主体 -->
+    <div class="start-wrap">
+      <div class="start">
+        <!-- 品牌 -->
+        <div class="brand">
+          <div class="logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+          </div>
+          <div>
+            <h1>欢迎使用 Markknife</h1>
+            <p>从最近打开的文档继续,或打开 / 新建一个 Markdown 文件</p>
+          </div>
+        </div>
+
+        <!-- 主操作 -->
+        <div class="actions">
+          <button class="act primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>
+            打开文件
+          </button>
+          <button class="act">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+            新建文件
+          </button>
+        </div>
+
+        <!-- 搜索 -->
+        <label class="search" id="searchBox">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="searchInput" type="text" placeholder="搜索历史记录(文件名或路径)…" autocomplete="off" spellcheck="false" />
+          <button class="clear" id="clearSearch" title="清除" aria-label="清除搜索">✕</button>
+        </label>
+
+        <!-- 区块标题 -->
+        <div class="sec-head">
+          <span class="label">最近打开</span>
+          <span class="count" id="count">0</span>
+          <span class="spacer"></span>
+          <button class="clear-all" id="clearAll">清空全部</button>
+        </div>
+
+        <!-- 列表 -->
+        <div class="list" id="list"></div>
+
+        <!-- 空状态 -->
+        <div class="empty" id="empty">
+          <div class="eic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </div>
+          <div class="et" id="emptyTitle">还没有最近打开的文件</div>
+          <div class="ed" id="emptyDesc">打开一个 Markdown 文件后,它会出现在这里</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hint">试试:在搜索框输入 <b>关键词</b> 过滤 · 悬停某条记录点 <b>🗑</b> 删除 · 「<b>清空全部</b>」清除历史</div>
+  </div>
+
+<script>
+  // —— 演示数据(最近打开的 Markdown 文件,时间相对 2026-06-04) ——
+  const RECENTS = [
+    { id: 1,  name: '使用指南.md',              path: '~/Documents/Markknife/使用指南.md',     time: '刚刚' },
+    { id: 2,  name: '会议纪要 2026-06-03.md',    path: '~/Documents/工作/会议纪要 2026-06-03.md', time: '12 分钟前' },
+    { id: 3,  name: '项目计划-Q3.md',            path: '~/Documents/工作/项目计划-Q3.md',        time: '1 小时前' },
+    { id: 4,  name: '读书笔记《思考,快与慢》.md', path: '~/Documents/阅读/读书笔记《思考,快与慢》.md', time: '今天 09:24' },
+    { id: 5,  name: 'README.md',                path: '~/Projects/tolaria/README.md',          time: '昨天' },
+    { id: 6,  name: 'API 设计文档.md',           path: '~/Projects/tolaria/docs/API 设计文档.md', time: '昨天' },
+    { id: 7,  name: '周报-第22周.md',            path: '~/Documents/工作/周报/周报-第22周.md',    time: '3 天前' },
+    { id: 8,  name: '旅行清单·京都.md',          path: '~/Documents/生活/旅行清单·京都.md',      time: '6 月 1 日' },
+    { id: 9,  name: '灵感速记.md',               path: '~/Documents/灵感速记.md',               time: '5 月 28 日' },
+    { id: 10, name: '待办清单.md',               path: '~/Documents/待办清单.md',               time: '上周' },
+  ];
+
+  const listEl   = document.getElementById('list');
+  const emptyEl  = document.getElementById('empty');
+  const countEl  = document.getElementById('count');
+  const searchEl = document.getElementById('searchInput');
+  const searchBox = document.getElementById('searchBox');
+
+  const FILE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
+  const TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+
+  let items = [...RECENTS];
+
+  // 高亮搜索命中片段
+  function highlight(text, q) {
+    if (!q) return escapeHtml(text);
+    const i = text.toLowerCase().indexOf(q);
+    if (i < 0) return escapeHtml(text);
+    return escapeHtml(text.slice(0, i)) + '<mark>' + escapeHtml(text.slice(i, i + q.length)) + '</mark>' + escapeHtml(text.slice(i + q.length));
+  }
+  function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+  function itemHTML(it, q) {
+    return `<div class="item" data-id="${it.id}">
+      <div class="fic">${FILE_SVG}</div>
+      <div class="meta">
+        <div class="name">${highlight(it.name, q)}</div>
+        <div class="path">${highlight(it.path, q)}</div>
+      </div>
+      <div class="right">
+        <span class="time">${it.time}</span>
+        <button class="del" title="从历史中删除" aria-label="从历史中删除">${TRASH_SVG}</button>
+      </div>
+    </div>`;
+  }
+
+  function render() {
+    const q = searchEl.value.trim().toLowerCase();
+    const visible = items.filter(it => !q || it.name.toLowerCase().includes(q) || it.path.toLowerCase().includes(q));
+
+    listEl.innerHTML = visible.map(it => itemHTML(it, q)).join('');
+    countEl.textContent = items.length;
+    searchBox.classList.toggle('has-text', !!searchEl.value);
+
+    // 空状态:区分「无历史」与「搜索无结果」两种文案
+    const isEmpty = visible.length === 0;
+    emptyEl.classList.toggle('show', isEmpty);
+    if (isEmpty) {
+      if (q) {
+        document.getElementById('emptyTitle').textContent = '未找到匹配的记录';
+        document.getElementById('emptyDesc').innerHTML = `没有与 <b>“${escapeHtml(searchEl.value.trim())}”</b> 匹配的历史记录`;
+      } else {
+        document.getElementById('emptyTitle').textContent = '还没有最近打开的文件';
+        document.getElementById('emptyDesc').textContent = '打开一个 Markdown 文件后,它会出现在这里';
+      }
+    }
+  }
+
+  // 删除单条:折叠淡出动画后从数据中移除
+  function removeItem(id, el) {
+    el.classList.add('removing');
+    setTimeout(() => {
+      items = items.filter(it => it.id !== id);
+      render();
+    }, 260);
+  }
+
+  // 列表事件委托:点删除 / 点条目(演示打开)
+  listEl.addEventListener('click', (e) => {
+    const row = e.target.closest('.item');
+    if (!row) return;
+    const id = +row.dataset.id;
+    if (e.target.closest('.del')) {
+      e.stopPropagation();
+      removeItem(id, row);
+    } else {
+      const it = items.find(x => x.id === id);
+      flashHint(`打开「${it ? it.name : ''}」(演示)`);
+    }
+  });
+
+  // 搜索
+  searchEl.addEventListener('input', render);
+  document.getElementById('clearSearch').addEventListener('click', () => {
+    searchEl.value = ''; render(); searchEl.focus();
+  });
+  searchEl.addEventListener('keydown', (e) => { if (e.key === 'Escape' && searchEl.value) { searchEl.value = ''; render(); } });
+
+  // 清空全部:逐条折叠后清空
+  document.getElementById('clearAll').addEventListener('click', () => {
+    const rows = [...listEl.querySelectorAll('.item')];
+    if (!rows.length) return;
+    rows.forEach(r => r.classList.add('removing'));
+    setTimeout(() => { items = []; render(); }, 280);
+  });
+
+  // 底部提示(演示反馈)
+  let hintTimer;
+  function flashHint(text) {
+    const h = document.querySelector('.hint');
+    h.innerHTML = text;
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => {
+      h.innerHTML = '试试:在搜索框输入 <b>关键词</b> 过滤 · 悬停某条记录点 <b>🗑</b> 删除 · 「<b>清空全部</b>」清除历史';
+    }, 1600);
+  }
+
+  render();
+  searchEl.focus();
+</script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+import { isTauri } from '../mock-tauri'
+
+type ExternalUrlCandidate = string
+type AbsoluteFilePath = string
+
+function parseHttpUrl(candidate: ExternalUrlCandidate): URL | null {
+  try {
+    const parsedUrl = new URL(candidate)
+    return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:' ? parsedUrl : null
+  } catch {
+    return null
+  }
+}
+
+function hasBareDomainHost(parsedUrl: URL): boolean {
+  const dotIndex = parsedUrl.hostname.lastIndexOf('.')
+  return dotIndex > 0 && dotIndex <= parsedUrl.hostname.length - 3
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  if (!error || typeof error !== 'object') return ''
+
+  const message = Reflect.get(error, 'message')
+  return typeof message === 'string' ? message : ''
+}
+
+function isExternalOpenCanceledByUser(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase()
+  return message.includes('os error 1223') ||
+    message.includes('operation was canceled by the user') ||
+    message.includes('operation was cancelled by the user')
+}
+
+export function normalizeExternalUrl(value: ExternalUrlCandidate): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  for (const char of trimmed) {
+    if (char.trim() === '') return null
+  }
+
+  if (parseHttpUrl(trimmed)) return trimmed
+  if (!trimmed.includes('.')) return null
+
+  const bareDomainCandidate = `https://${trimmed}`
+  const parsedBareDomain = parseHttpUrl(bareDomainCandidate)
+  if (!parsedBareDomain || !hasBareDomainHost(parsedBareDomain)) return null
+  return bareDomainCandidate
+}
+
+/** Open a URL in the system browser. Uses Tauri opener plugin in native mode, window.open in browser. */
+export async function openExternalUrl(url: ExternalUrlCandidate): Promise<void> {
+  const normalized = normalizeExternalUrl(url)
+  if (!normalized) return
+
+  if (isTauri()) {
+    const { openUrl } = await import('@tauri-apps/plugin-opener')
+    try {
+      await openUrl(normalized)
+    } catch (error) {
+      if (isExternalOpenCanceledByUser(error)) return
+      throw error
+    }
+  } else {
+    window.open(normalized, '_blank')
+  }
+}
+
+/** Open a local file path with the system default app (e.g. TextEdit for .json). */
+export async function openLocalFile(absolutePath: AbsoluteFilePath, vaultPath?: AbsoluteFilePath): Promise<void> {
+  if (isTauri()) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const args: { path: string; vaultPath?: string } = { path: absolutePath }
+    if (vaultPath) args.vaultPath = vaultPath
+    await invoke('open_vault_file_external', args)
+  }
+}
+

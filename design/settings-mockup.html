@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Markknife · 设置(样式 / 语言 / 快捷键) UI 原型</title>
+<style>
+  :root {
+    --bg: #f7f6f3; --content: #ffffff; --fg: #34302a; --fg-muted: #94908a; --fg-soft: #b6b2ab;
+    --border: #e9e6e0; --hover: #f0eee9; --accent: #4f6bed; --accent-soft: #ecefff;
+    --accent-blue: #5b86ff; --accent-purple: #8b5cf6; --radius: 10px;
+    font-synthesis: none; -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: #e3e1dc; color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; display: flex; align-items: center; justify-content: center; padding: 28px; }
+
+  /* 弹窗:左导航 + 右内容(功能多了,从单列滚动升级为两栏) */
+  .dialog {
+    width: 720px; max-width: calc(100% - 32px); height: 560px; max-height: calc(100vh - 56px);
+    background: var(--content); border-radius: 16px; overflow: hidden;
+    box-shadow: 0 30px 70px rgba(0,0,0,.35); display: flex; flex-direction: column;
+  }
+  .dialog-head {
+    display: flex; align-items: center; gap: 14px; padding: 18px 22px; color: #fff; flex: 0 0 auto;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  }
+  .dialog-head .ic { width: 40px; height: 40px; border-radius: 11px; background: rgba(255,255,255,.16); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .dialog-head .ic svg { width: 22px; height: 22px; }
+  .dialog-head h2 { margin: 0; font-size: 18px; font-weight: 700; }
+  .dialog-head p { margin: 2px 0 0; font-size: 12.5px; color: rgba(255,255,255,.82); }
+  .dialog-head .x { margin-left: auto; width: 32px; height: 32px; border-radius: 50%; border: 0; background: rgba(255,255,255,.16); color: #fff; cursor: pointer; font-size: 15px; }
+
+  .dialog-main { flex: 1; min-height: 0; display: flex; }
+
+  /* 左侧导航 */
+  .nav { width: 168px; flex: 0 0 168px; border-right: 1px solid var(--border); padding: 10px 8px; background: var(--bg); display: flex; flex-direction: column; gap: 1px; }
+  .nav button { display: flex; align-items: center; gap: 9px; height: 34px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--fg-muted); font-size: 13px; cursor: pointer; text-align: left; font-family: inherit; }
+  .nav button svg { width: 16px; height: 16px; flex: 0 0 auto; }
+  .nav button:hover { background: var(--hover); color: var(--fg); }
+  .nav button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+  /* 右侧面板 */
+  .panes { flex: 1; min-width: 0; overflow-y: auto; padding: 18px 22px 22px; }
+  .pane { display: none; }
+  .pane.on { display: block; }
+  .sec-label { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--fg-muted); margin: 4px 0 6px; }
+  .row { display: flex; align-items: center; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--border); }
+  .row:last-child { border-bottom: 0; }
+  .row .info { flex: 1; min-width: 0; }
+  .row .info .t { font-size: 14px; font-weight: 600; }
+  .row .info .d { font-size: 12px; color: var(--fg-muted); margin-top: 2px; }
+
+  /* shadcn 风格 segmented / switch / select */
+  .segmented { display: inline-flex; background: var(--hover); border: 1px solid var(--border); border-radius: 9px; padding: 2px; }
+  .segmented button { border: 0; background: transparent; color: var(--fg-muted); font-size: 12.5px; padding: 5px 12px; border-radius: 7px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+  .segmented button.on { background: #fff; color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.08); font-weight: 600; }
+  .segmented button svg { width: 15px; height: 15px; }
+  .switch { width: 40px; height: 23px; border-radius: 999px; background: #d8d4cc; border: 0; cursor: pointer; position: relative; flex: 0 0 auto; transition: background .15s; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 19px; height: 19px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform .15s; }
+  .switch.on { background: var(--accent); } .switch.on::after { transform: translateX(17px); }
+
+  /* —— 样式:主题卡片画廊 —— */
+  .styles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 6px; }
+  .style-card { border: 1.5px solid var(--border); border-radius: 12px; padding: 10px; cursor: pointer; transition: border-color .12s, box-shadow .12s; background: var(--content); }
+  .style-card:hover { border-color: var(--fg-soft); }
+  .style-card.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .style-card .thumb { height: 76px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 5px; padding: 9px; }
+  .style-card .thumb .ln { height: 6px; border-radius: 3px; }
+  .style-card .cap { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+  .style-card .cap .nm { font-size: 12.5px; font-weight: 600; }
+  .style-card .cap .ck { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); color: #fff; display: none; align-items: center; justify-content: center; }
+  .style-card .cap .ck svg { width: 11px; height: 11px; }
+  .style-card.on .cap .ck { display: flex; }
+  /* 各主题缩略图配色 */
+  .t-default .thumb { background: #fff; } .t-default .ln.h { background: #34302a; width: 60%; } .t-default .ln { background: #d9d6d0; }
+  .t-sepia .thumb { background: #f4ecd8; } .t-sepia .ln.h { background: #5b4636; width: 60%; } .t-sepia .ln { background: #d8c8a8; }
+  .t-dark .thumb { background: #23221f; } .t-dark .ln.h { background: #e8e6e1; width: 60%; } .t-dark .ln { background: #46433b; }
+  .t-nord .thumb { background: #eceff4; } .t-nord .ln.h { background: #5e81ac; width: 60%; } .t-nord .ln { background: #c2cad6; }
+  .t-serif .thumb { background: #fffdf8; font-family: Georgia, serif; } .t-serif .ln.h { background: #2c2a28; width: 64%; } .t-serif .ln { background: #ded9cf; }
+  .t-rose .thumb { background: #fff5f6; } .t-rose .ln.h { background: #c2566f; width: 60%; } .t-rose .ln { background: #f1cdd4; }
+
+  /* —— 语言:单选列表 —— */
+  .lang-list { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+  .lang { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 12px; border-radius: 9px; cursor: pointer; }
+  .lang:hover { background: var(--hover); }
+  .lang .flag { width: 26px; text-align: center; font-size: 17px; }
+  .lang .nm { flex: 1; font-size: 13.5px; font-weight: 600; }
+  .lang .sub { font-size: 12px; color: var(--fg-muted); font-weight: 400; margin-left: 6px; }
+  .lang .radio { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border); flex: 0 0 auto; position: relative; }
+  .lang.on .radio { border-color: var(--accent); } .lang.on .radio::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--accent); }
+  .lang.on { background: var(--accent-soft); }
+
+  /* —— 快捷键:可录制按键的列表 —— */
+  .keys { display: flex; flex-direction: column; }
+  .key-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+  .key-row:last-child { border-bottom: 0; }
+  .key-row .kt { flex: 1; font-size: 13.5px; font-weight: 600; }
+  .key-row .kt .kd { font-size: 12px; color: var(--fg-muted); font-weight: 400; margin-top: 1px; }
+  .kbd { display: inline-flex; align-items: center; gap: 3px; }
+  .kbd .cap { min-width: 24px; height: 26px; padding: 0 7px; display: inline-flex; align-items: center; justify-content: center; background: var(--hover); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--fg); font-family: ui-monospace, Menlo, monospace; }
+  .key-edit { width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--fg-soft); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+  .key-edit:hover { background: var(--hover); color: var(--accent); } .key-edit svg { width: 15px; height: 15px; }
+  .key-row.recording .kbd { display: none; }
+  .key-row .rec { display: none; font-size: 12.5px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border: 1px dashed var(--accent); border-radius: 7px; padding: 5px 10px; }
+  .key-row.recording .rec { display: inline-flex; }
+
+  /* 滑块占位 */
+  .slider { width: 180px; height: 5px; border-radius: 3px; background: var(--hover); position: relative; flex: 0 0 auto; }
+  .slider i { position: absolute; left: 60%; top: 50%; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); transform: translate(-50%,-50%); box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+  .slider-val { width: 56px; text-align: right; font-size: 13px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+  .dialog-foot { display: flex; justify-content: flex-end; padding: 11px 22px; border-top: 1px solid var(--border); flex: 0 0 auto; }
+  .ghost-btn { border: 0; background: transparent; color: var(--fg-muted); font-size: 13px; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
+  .ghost-btn:hover { background: var(--hover); color: var(--fg); }
+</style>
+</head>
+<body>
+  <div class="dialog">
+    <div class="dialog-head">
+      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+      <div><h2>设置</h2><p>自定义你的阅读与编辑体验</p></div>
+      <button class="x">✕</button>
+    </div>
+
+    <div class="dialog-main">
+      <!-- 左侧导航 -->
+      <nav class="nav" id="nav">
+        <button class="on" data-pane="appearance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>外观</button>
+        <button data-pane="styles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="12" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="13" r="2.5"/><path d="M12 22a10 10 0 1 1 10-10c0 2-1.5 3-3 3h-2a2 2 0 0 0-1 3.7A2 2 0 0 1 12 22z"/></svg>样式</button>
+        <button data-pane="language"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>语言</button>
+        <button data-pane="keys"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/></svg>快捷键</button>
+        <button data-pane="toc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>目录</button>
+        <button data-pane="editor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="9" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1" opacity=".4"/></svg>编辑</button>
+      </nav>
+
+      <!-- 右侧面板 -->
+      <div class="panes">
+        <!-- 外观(沿用现有) -->
+        <section class="pane on" data-pane="appearance">
+          <div class="sec-label">外观</div>
+          <div class="row"><div class="info"><div class="t">最大宽度</div><div class="d">限制内容宽度以提高可读性</div></div><span class="slider-val">1000px</span><div class="slider"><i></i></div></div>
+          <div class="row"><div class="info"><div class="t">字体大小</div></div><span class="slider-val">15px</span><div class="slider"><i style="left:45%"></i></div></div>
+          <div class="row"><div class="info"><div class="t">行高</div></div><span class="slider-val">1.5</span><div class="slider"><i style="left:40%"></i></div></div>
+          <div class="row"><div class="info"><div class="t">深色模式</div><div class="d">跟随系统,或强制浅色 / 深色</div></div>
+            <div class="segmented"><button>跟随系统</button><button class="on">浅色</button><button>深色</button></div></div>
+        </section>
+
+        <!-- 样式(功能②:多种 style) -->
+        <section class="pane" data-pane="styles">
+          <div class="sec-label">阅读样式</div>
+          <p style="font-size:12.5px;color:var(--fg-muted);margin:0 0 4px">选择一套预设排版主题,影响正文配色、字体与间距。</p>
+          <div class="styles" id="styleGrid">
+            <div class="style-card t-default on" data-style="default"><div class="thumb"><div class="ln h"></div><div class="ln" style="width:90%"></div><div class="ln" style="width:80%"></div><div class="ln" style="width:88%"></div></div><div class="cap"><span class="nm">默认</span><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span></div></div>
+            <div class="style-card t-sepia" data-style="sepia"><div class="thumb"><div class="ln h"></div><div class="ln" style="width:90%"></div><div class="ln" style="width:80%"></div><div class="ln" style="width:88%"></div></div><div class="cap"><span class="nm">护眼</span><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span></div></div>
+            <div class="style-card t-serif" data-style="serif"><div class="thumb"><div class="ln h"></div><div class="ln" style="width:90%"></div><div class="ln" style="width:80%"></div><div class="ln" style="width:88%"></div></div><div class="cap"><span class="nm">衬线</span><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span></div></div>
+            <div class="style-card t-nord" data-style="nord"><div class="thumb"><div class="ln h"></div><div class="ln" style="width:90%"></div><div class="ln" style="width:80%"></div><div class="ln" style="width:88%"></div></div><div class="cap"><span class="nm">Nord</span><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span></div></div>
+            <div class="style-card t-rose" data-style="rose"><div class="thumb"><div class="ln h"></div><div class="ln" style="width:90%"></div><div class="ln" style="width:80%"></div><div class="ln" style="width:88%"></div></div><div class="cap"><span class="nm">玫瑰</span><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span></div></div>
+            <div class="style-card t-dark" data-style="dark"><div class="thumb"><div class="ln h"></div><div class="ln" style="width:90%"></div><div class="ln" style="width:80%"></div><div class="ln" style="width:88%"></div></div><div class="cap"><span class="nm">深色</span><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span></div></div>
+          </div>
+        </section>
+
+        <!-- 语言(功能③:多语言) -->
+        <section class="pane" data-pane="language">
+          <div class="sec-label">界面语言</div>
+          <div class="lang-list" id="langList">
+            <div class="lang on" data-lang="zh-CN"><span class="flag">🇨🇳</span><span class="nm">简体中文<span class="sub">Chinese (Simplified)</span></span><span class="radio"></span></div>
+            <div class="lang" data-lang="zh-TW"><span class="flag">🇭🇰</span><span class="nm">繁體中文<span class="sub">Chinese (Traditional)</span></span><span class="radio"></span></div>
+            <div class="lang" data-lang="en"><span class="flag">🇺🇸</span><span class="nm">English<span class="sub">英语</span></span><span class="radio"></span></div>
+            <div class="lang" data-lang="ja-JP"><span class="flag">🇯🇵</span><span class="nm">日本語<span class="sub">日语</span></span><span class="radio"></span></div>
+            <div class="lang" data-lang="ko-KR"><span class="flag">🇰🇷</span><span class="nm">한국어<span class="sub">韩语</span></span><span class="radio"></span></div>
+            <div class="lang" data-lang="fr-FR"><span class="flag">🇫🇷</span><span class="nm">Français<span class="sub">法语</span></span><span class="radio"></span></div>
+          </div>
+        </section>
+
+        <!-- 快捷键(功能④:自定义快捷键) -->
+        <section class="pane" data-pane="keys">
+          <div class="sec-label">快捷键</div>
+          <p style="font-size:12.5px;color:var(--fg-muted);margin:0 0 4px">点击右侧 ✎ 录制新的组合键,Esc 取消。</p>
+          <div class="keys" id="keyList">
+            <div class="key-row"><div class="kt">收起 / 展开目录<div class="kd">隐藏或显示左侧目录面板</div></div><span class="kbd"><span class="cap">⌘</span><span class="cap">\</span></span><span class="rec">按下新组合键…</span><button class="key-edit" title="录制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button></div>
+            <div class="key-row"><div class="kt">切换到「查看」</div><span class="kbd"><span class="cap">⌘</span><span class="cap">1</span></span><span class="rec">按下新组合键…</span><button class="key-edit" title="录制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button></div>
+            <div class="key-row"><div class="kt">切换到「所见即所得」</div><span class="kbd"><span class="cap">⌘</span><span class="cap">2</span></span><span class="rec">按下新组合键…</span><button class="key-edit" title="录制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button></div>
+            <div class="key-row"><div class="kt">切换到「分栏」</div><span class="kbd"><span class="cap">⌘</span><span class="cap">3</span></span><span class="rec">按下新组合键…</span><button class="key-edit" title="录制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button></div>
+            <div class="key-row"><div class="kt">保存<div class="kd">立即写回磁盘</div></div><span class="kbd"><span class="cap">⌘</span><span class="cap">S</span></span><span class="rec">按下新组合键…</span><button class="key-edit" title="录制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button></div>
+            <div class="key-row"><div class="kt">打开文件</div><span class="kbd"><span class="cap">⌘</span><span class="cap">O</span></span><span class="rec">按下新组合键…</span><button class="key-edit" title="录制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button></div>
+          </div>
+        </section>
+
+        <!-- 目录(沿用现有) -->
+        <section class="pane" data-pane="toc">
+          <div class="sec-label">目录</div>
+          <div class="row"><div class="info"><div class="t">默认显示目录面板</div><div class="d">打开文件时是否默认展开目录</div></div><button class="switch on"></button></div>
+          <div class="row"><div class="info"><div class="t">目录位置</div><div class="d">目录面板显示在内容的哪一侧</div></div>
+            <div class="segmented"><button class="on">左侧</button><button>右侧</button></div></div>
+        </section>
+
+        <!-- 编辑(沿用现有) -->
+        <section class="pane" data-pane="editor">
+          <div class="sec-label">编辑</div>
+          <div class="row"><div class="info"><div class="t">分栏方向</div><div class="d">分栏模式下编辑区与预览区的左右排列</div></div>
+            <div class="segmented"><button class="on">编辑·预览</button><button>预览·编辑</button></div></div>
+        </section>
+      </div>
+    </div>
+
+    <div class="dialog-foot"><button class="ghost-btn">恢复默认</button></div>
+  </div>
+
+<script>
+  // 左导航切换面板
+  const nav = document.getElementById('nav');
+  nav.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    [...nav.children].forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.dataset.pane === b.dataset.pane));
+  });
+  // 样式卡片单选
+  document.getElementById('styleGrid').addEventListener('click', (e) => {
+    const c = e.target.closest('.style-card'); if (!c) return;
+    document.querySelectorAll('.style-card').forEach(x => x.classList.toggle('on', x === c));
+  });
+  // 语言单选
+  document.getElementById('langList').addEventListener('click', (e) => {
+    const l = e.target.closest('.lang'); if (!l) return;
+    document.querySelectorAll('.lang').forEach(x => x.classList.toggle('on', x === l));
+  });
+  // 快捷键录制(演示:点 ✎ 进入录制态,按任意键写回)
+  document.getElementById('keyList').addEventListener('click', (e) => {
+    const btn = e.target.closest('.key-edit'); if (!btn) return;
+    const row = btn.closest('.key-row');
+    const recording = row.classList.toggle('recording');
+    if (recording) {
+      const onKey = (ev) => {
+        ev.preventDefault();
+        if (ev.key !== 'Escape') {
+          const caps = [];
+          if (ev.metaKey) caps.push('⌘'); if (ev.ctrlKey) caps.push('⌃'); if (ev.altKey) caps.push('⌥'); if (ev.shiftKey) caps.push('⇧');
+          const k = ev.key.length === 1 ? ev.key.toUpperCase() : ev.key;
+          if (!['Meta','Control','Alt','Shift'].includes(ev.key)) caps.push(k);
+          row.querySelector('.kbd').innerHTML = caps.map(c => '<span class="cap">'+c+'</span>').join('');
+        }
+        row.classList.remove('recording');
+        window.removeEventListener('keydown', onKey, true);
+      };
+      window.addEventListener('keydown', onKey, true);
+    }
+  });
+</script>
+</body>
+</html>

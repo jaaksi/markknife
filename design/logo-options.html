@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Markknife · 刀长 + 断开</title>
+<style>
+  :root{--bg:#0f1115;--card-2:#1d212a;--border:#262b34;--text:#e7ebf2;--muted:#94a3b8}
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"PingFang SC",sans-serif;padding:48px 28px 80px}
+  .wrap{max-width:1100px;margin:0 auto}
+  h1{font-size:26px;font-weight:700;margin:0 0 4px;background:linear-gradient(135deg,#5b86ff,#8b5cf6);-webkit-background-clip:text;background-clip:text;color:transparent;display:inline-block}
+  p.sub{margin:0;color:var(--muted);font-size:14px}
+  .controls{display:flex;gap:8px;margin:24px 0 6px;flex-wrap:wrap}
+  .controls span.lbl{color:var(--muted);font-size:13px;align-self:center;margin-right:4px}
+  .controls button{background:var(--card-2);color:var(--text);border:1px solid var(--border);padding:7px 14px;border-radius:9px;font-size:13px;cursor:pointer;transition:.15s}
+  .controls button:hover{border-color:#3a4250}
+  .controls button.active{border-color:#5b86ff;box-shadow:0 0 0 1px #5b86ff inset}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:18px;margin-top:18px}
+  .cell{position:relative}
+  .stage{border-radius:16px;display:flex;align-items:center;justify-content:center;padding:30px 0;border:1px solid var(--border);transition:.2s}
+  .stage.dark{background:#0b0d12}
+  .stage.light{background:#f4f5f8}
+  .stage.checker{background:linear-gradient(45deg,#2a2f3a 25%,transparent 25%),linear-gradient(-45deg,#2a2f3a 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#2a2f3a 75%),linear-gradient(-45deg,transparent 75%,#2a2f3a 75%);background-size:18px 18px;background-position:0 0,0 9px,9px -9px,-9px 0;background-color:#1a1d24}
+  .meta{display:flex;justify-content:space-between;align-items:baseline;margin-top:10px}
+  .meta .no{font-size:14px;font-weight:650}
+  .meta .desc{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Markknife · 刀长 + 断开</h1>
+  <p class="sub">① / 1a 保留(相连) · 1d 1e 上划线与刀断开,刀尽量长</p>
+
+  <div class="controls">
+    <span class="lbl">预览底色：</span>
+    <button data-bg="dark" class="active">深色</button>
+    <button data-bg="light">浅色</button>
+    <button data-bg="checker">透明格</button>
+  </div>
+
+  <div class="grid" id="grid"></div>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- ① 原版:相连,最长 -->
+  <symbol id="s1" viewBox="0 0 120 120">
+    <defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5b86ff"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
+    <rect x="8" y="8" width="104" height="104" rx="28" fill="url(#g1)"/>
+    <polyline points="34 84 34 42 60 66 86 42" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="81" y="38" width="10" height="15.5" rx="4" fill="#fff"/>
+    <rect x="78" y="53" width="16" height="4.5" rx="2" fill="#fff"/>
+    <path d="M81 58 L91 58 L91 80 Q91 86.5 86 89 Q81 86.5 81 80 Z" fill="#fff"/>
+  </symbol>
+
+  <!-- 1a 相连,护手 y58 -->
+  <symbol id="sa" viewBox="0 0 120 120">
+    <defs><linearGradient id="ga" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5b86ff"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
+    <rect x="8" y="8" width="104" height="104" rx="28" fill="url(#ga)"/>
+    <polyline points="34 84 34 42 60 66 86 42" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="81" y="38" width="10" height="20" rx="4" fill="#fff"/>
+    <rect x="78" y="58" width="16" height="4.5" rx="2" fill="#fff"/>
+    <path d="M81 63 L91 63 L91 80 Q91 86.5 86 89 Q81 86.5 81 80 Z" fill="#fff"/>
+  </symbol>
+
+  <!-- 1d 断开 + 底齐 M(刀略短) -->
+  <symbol id="sd" viewBox="0 0 120 120">
+    <defs><linearGradient id="gd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5b86ff"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
+    <rect x="8" y="8" width="104" height="104" rx="28" fill="url(#gd)"/>
+    <polyline points="34 84 34 42 60 66 86 42" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="81" y="50" width="10" height="10.5" rx="4" fill="#fff"/>
+    <rect x="78" y="60" width="16" height="4.5" rx="2" fill="#fff"/>
+    <path d="M81 65 L91 65 L91 80.5 Q91 86 86 89 Q81 86 81 80.5 Z" fill="#fff"/>
+  </symbol>
+
+  <!-- 1e 断开 + 底略过 M(补回长度,接近①) -->
+  <symbol id="se" viewBox="0 0 120 120">
+    <defs><linearGradient id="ge" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5b86ff"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
+    <rect x="8" y="8" width="104" height="104" rx="28" fill="url(#ge)"/>
+    <polyline points="34 84 34 42 60 66 86 42" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="81" y="50" width="10" height="11" rx="4" fill="#fff"/>
+    <rect x="78" y="60.5" width="16" height="4.5" rx="2" fill="#fff"/>
+    <path d="M81 65 L91 65 L91 84 Q91 89.5 86 93 Q81 89.5 81 84 Z" fill="#fff"/>
+  </symbol>
+</svg>
+
+<script>
+  const CARDS = [
+    ["s1","①","相连 · 最长"],
+    ["sa","1a","相连 · 护手 58"],
+    ["sd","1d","断开 · 底齐 M(略短)"],
+    ["se","1e","断开 · 底略过(接近①长)"],
+  ];
+  const grid = document.getElementById("grid");
+  CARDS.forEach(([id,no,desc])=>{
+    const c=document.createElement("div");c.className="cell";
+    c.innerHTML=`<div class="stage dark"><svg viewBox="0 0 120 120" width="130" height="130"><use href="#${id}"/></svg></div>
+      <div class="meta"><span class="no">${no}</span><span class="desc">${desc}</span></div>`;
+    grid.appendChild(c);
+  });
+  document.querySelectorAll(".controls button").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      document.querySelectorAll(".controls button").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      document.querySelectorAll(".stage").forEach(s=>s.className="stage "+btn.dataset.bg);
+    });
+  });
+</script>
+</body>
+</html>
