@@ -105,6 +105,13 @@ export function useTocHeadings(signature: string): UseTocHeadingsResult {
       if (lockedRef.current) return
       const els = elementsRef.current
       if (!els.length) return
+      // 已滚动到(接近)底部:直接高亮最后一个标题。末屏的标题因文档已到底、永远到不了顶部阈值,
+      // 否则会出现"读到文档底部时目录高亮停住不再跟随"。仅在内容确实可滚动时才兜底(短文档不误判)。
+      const maxScroll = scrollArea.scrollHeight - scrollArea.clientHeight
+      if (maxScroll > 0 && maxScroll - scrollArea.scrollTop <= 2) {
+        setActiveIndex(els.length - 1)
+        return
+      }
       const baseTop = scrollArea.getBoundingClientRect().top
       const threshold = ACTIVE_OFFSET
       let idx = 0

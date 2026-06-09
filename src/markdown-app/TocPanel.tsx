@@ -1,5 +1,5 @@
 import { ArrowsInLineVertical, ArrowsOutLineVertical, CaretDown, CaretLeft, CaretRight } from '@phosphor-icons/react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '../components/ui/button'
 import type { TocHeading } from './useTocHeadings'
 import type { TocPosition } from './useTocPreferences'
@@ -145,6 +145,31 @@ export function TocPanel({ headings, activeIndex, position, onSelect, onCollapse
     setCollapsed(anyExpanded ? new Set(hasChildren.flatMap((parent, i) => (parent ? [i] : []))) : new Set())
   }, [anyExpanded, hasChildren])
 
+  // activeIndex 变化时,把高亮项滚入目录可视区(仅当它不可见,且只滚最小量),让目录随文档滚动而跟随;
+  // 长目录里高亮项才不会滚出视野。只依赖 activeIndex,不干扰用户手动浏览目录。
+  const navRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const nav = navRef.current
+    if (!nav) return
+    // 回到第一个标题:直接把目录拉到最顶,确保第一项不被容器上边缘裁切
+    // (原先靠 getBoundingClientRect 对齐计算,受 padding/行间距影响偶有残留导致文字显示不全)。
+    if (activeIndex <= 0) {
+      nav.scrollTop = 0
+      return
+    }
+    const activeEl = nav.querySelector<HTMLElement>('[data-testid="toc-item"][aria-current="true"]')
+    if (!activeEl) return
+    const navRect = nav.getBoundingClientRect()
+    const elRect = activeEl.getBoundingClientRect()
+    // 对齐时留一点余量,避免高亮项紧贴边缘或被 padding 裁切。
+    const MARGIN = 8
+    if (elRect.top < navRect.top + MARGIN) {
+      nav.scrollBy({ top: elRect.top - navRect.top - MARGIN })
+    } else if (elRect.bottom > navRect.bottom - MARGIN) {
+      nav.scrollBy({ top: elRect.bottom - navRect.bottom + MARGIN })
+    }
+  }, [activeIndex])
+
   return (
     <aside
       data-testid="toc-panel"
@@ -185,7 +210,7 @@ export function TocPanel({ headings, activeIndex, position, onSelect, onCollapse
         </Button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 pt-1 pb-4">
+      <nav ref={navRef} className="flex-1 overflow-y-auto px-2 pt-1 pb-4">
         {headings.map((heading, index) =>
           hidden[index] ? null : (
             <TocRow
