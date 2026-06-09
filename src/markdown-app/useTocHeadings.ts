@@ -35,6 +35,8 @@ export function useTocHeadings(signature: string): UseTocHeadingsResult {
   // 点击目录项触发的程序化平滑滚动期间锁定高亮,避免滚动事件把高亮抢回中途标题。
   const lockedRef = useRef(false)
   const lockTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // 切换(模式 / 文件)后的过渡保护期标志:期间提取到空标题不清空目录,避免新表面异步渲染时面板闪烁。
+  const settledRef = useRef(false)
 
   // 切文件 / 切模式:表面重挂载且回到顶部,高亮重置为首项。
   // 用「记录上一次签名 + 变化时在渲染期重置」取代 effect 内的 setState,避免级联渲染;
@@ -46,15 +48,21 @@ export function useTocHeadings(signature: string): UseTocHeadingsResult {
   }
 
   useEffect(() => {
-    // 表面重挂载,清掉残留的滚动锁。
+    // 表面重挂载,清掉残留的滚动锁;并进入「切换过渡保护期」(见下方 rebuild)。
     lockedRef.current = false
+    settledRef.current = false
     const scrollArea = document.querySelector(SCROLL_AREA_SELECTOR) as HTMLElement | null
     scrollAreaRef.current = scrollArea
 
-    // 从当前滚动容器重建标题列表;无容器时即清空(集中走此函数,不在 effect 体内直接 setState)。
+    // 从当前滚动容器重建标题列表(集中走此函数,不在 effect 体内直接 setState)。
+    // 关键:切模式 / 切文件时,新表面的 .editor-scroll-area 已挂载、但 BlockNote 异步渲染
+    // 出标题元素还要一会儿,此刻提取必为空。若直接清空,目录会瞬时消失再出现造成闪烁。
+    // 因此在过渡保护期内(settledRef=false)遇到空结果就「保留现有目录」不动,待表面渲染出
+    // 标题后再替换;只有保护期结束(settle)或编辑态真的删光标题时,才允许把目录清空。
     const rebuild = () => {
       const area = scrollAreaRef.current
       const els = area ? (Array.from(area.querySelectorAll(HEADING_SELECTOR)) as HTMLElement[]) : []
+      if (els.length === 0 && !settledRef.current) return
       elementsRef.current = els
       setHeadings(
         els.map((el) => ({
@@ -67,6 +75,9 @@ export function useTocHeadings(signature: string): UseTocHeadingsResult {
     }
 
     if (!scrollArea) {
+      // 无滚动容器(回到起始页 / 无文档表面):直接清空,避免下次打开文件时残留上一文档的目录。
+      // 置 settledRef 让 rebuild 走清空分支(setState 集中在 rebuild 内,不在 effect 体内同步调用)。
+      settledRef.current = true
       rebuild()
       return
     }
@@ -74,7 +85,11 @@ export function useTocHeadings(signature: string): UseTocHeadingsResult {
     // 立即构建 + 兜底两次(BlockNote 异步渲染);后续靠 MutationObserver 实时同步。
     rebuild()
     const raf = requestAnimationFrame(rebuild)
-    const settleTimer = setTimeout(rebuild, 250)
+    const settleTimer = setTimeout(() => {
+      // 过渡保护期结束:此后「提取为空」才真正清空(切到无标题文档 / 编辑删光所有标题)。
+      settledRef.current = true
+      rebuild()
+    }, 250)
 
     let rebuildTimer: ReturnType<typeof setTimeout> | undefined
     const observer = new MutationObserver(() => {
