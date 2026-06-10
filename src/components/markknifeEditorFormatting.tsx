@@ -736,7 +736,7 @@ export function MarkknifeFormattingToolbarController(props: {
     isOpen,
   })
 
-  const position = useEditorState({
+  const livePosition = useEditorState({
     editor,
     selector: ({ editor }) => (
       shouldRenderFloatingToolbar
@@ -747,6 +747,23 @@ export function MarkknifeFormattingToolbarController(props: {
         : undefined
     ),
   })
+  // show=false 而仍在渲染(关闭宽限 / 悬停延续)期间,冻结工具栏位置:这段时间只为让
+  // 指针够得到工具栏;若继续跟随新选区,工具栏可能瞬移到光标正下方,误触 pointerEnter
+  // 把 hovered 卡成 true,导致工具栏永不关闭(WebKit 下选区漂移时尤其容易出现)。
+  // 用「渲染期 setState」记录最后一次 show=true 时的位置(同 App.tsx 的派生状态模式)。
+  const [lastShownPosition, setLastShownPosition] = useState<{ from: number; to: number } | undefined>(undefined)
+  if (
+    show
+    && livePosition
+    && (lastShownPosition?.from !== livePosition.from || lastShownPosition?.to !== livePosition.to)
+  ) {
+    setLastShownPosition(livePosition)
+  }
+  const position = show
+    ? livePosition
+    : shouldRenderFloatingToolbar
+      ? lastShownPosition
+      : undefined
 
   const placement = useEditorState({
     editor,

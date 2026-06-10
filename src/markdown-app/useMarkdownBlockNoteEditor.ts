@@ -6,6 +6,7 @@ import { uploadImageFile } from '../hooks/useImageDrop'
 import { RUNTIME_STYLE_NONCE } from '../lib/runtimeStyleNonce'
 import { schema } from '../components/editorSchema'
 import { createArrowLigaturesExtension } from '../components/arrowLigaturesExtension'
+import { createFileBlockSelectionGuardExtension } from '../components/fileBlockSelectionGuardExtension'
 import { createImeCompositionKeyGuardExtension } from '../components/imeCompositionKeyGuardExtension'
 import { createMarkdownHighlightInputExtension } from '../components/markdownHighlightInputExtension'
 import { createMathInputExtension } from '../components/mathInputExtension'
@@ -36,6 +37,7 @@ export function useMarkdownBlockNoteEditor(vaultPath?: string) {
     _tiptapOptions: { injectNonce: RUNTIME_STYLE_NONCE },
     extensions: [
       createRichEditorTransformErrorRecoveryExtension(),
+      createFileBlockSelectionGuardExtension(),
       createImeCompositionKeyGuardExtension(),
       createArrowLigaturesExtension(),
       createMarkdownHighlightInputExtension(),

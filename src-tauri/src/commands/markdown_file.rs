@@ -2,10 +2,22 @@ use crate::vault;
 use std::path::Path;
 use std::sync::Mutex;
 
-/// 读取单个 Markdown 文件（绝对路径）。
+/// 读取单个 Markdown 文件（绝对路径）。同时把文件所在目录加入 asset 协议白名单——
+/// 文档内相对路径图片会被前端转成 asset URL,目录不在白名单内 webview 会拒绝加载。
 #[tauri::command]
-pub fn read_markdown_file(path: String) -> Result<String, String> {
-    vault::get_note_content(Path::new(&path))
+pub fn read_markdown_file(app_handle: tauri::AppHandle, path: String) -> Result<String, String> {
+    let note_path = Path::new(&path);
+    let content = vault::get_note_content(note_path)?;
+    #[cfg(desktop)]
+    if let Some(parent) = note_path.parent() {
+        // 授权失败只影响图片显示,不阻断打开文件。
+        if let Err(error) = crate::sync_vault_asset_scope(&app_handle, parent) {
+            log::warn!("为 {} 授权图片资源目录失败: {error}", parent.display());
+        }
+    }
+    #[cfg(not(desktop))]
+    let _ = app_handle;
+    Ok(content)
 }
 
 /// 写入单个 Markdown 文件（绝对路径）。父目录不存在时创建，带写入重试。

@@ -3,6 +3,7 @@ import { preProcessMathMarkdown, injectMathInBlocks } from '../utils/mathMarkdow
 import { injectDurableEditorMarkdownBlocks, preProcessDurableEditorMarkdown } from '../utils/editorDurableMarkdown'
 import { injectMarkdownHighlightsInBlocks } from '../utils/markdownHighlightMarkdown'
 import { resolveImageUrls } from '../utils/vaultImages'
+import { preProcessHtmlImageMarkdown } from '../utils/htmlImageMarkdown'
 import { repairMalformedEditorBlocks } from './editorBlockRepair'
 import { inferCodeBlockLanguages } from '../utils/codeBlockLanguage'
 import {
@@ -138,7 +139,10 @@ function preProcessEditorMarkdown(
   notePath?: NotePath,
 ): PreprocessedMarkdown {
   const withDurableBlocks = preProcessDurableEditorMarkdown({ markdown })
-  const withImages = vaultPath ? resolveImageUrls(withDurableBlocks, vaultPath, notePath) : withDurableBlocks
+  // 先把 HTML <img> 规范化成 Markdown 图片语法,再交给相对路径解析,这样文档里用 <img>
+  // 写的图片(如 README 为居中 / 限宽而用的)也能在应用内显示。
+  const withHtmlImages = preProcessHtmlImageMarkdown({ markdown: withDurableBlocks })
+  const withImages = vaultPath ? resolveImageUrls(withHtmlImages, vaultPath, notePath) : withHtmlImages
   return preProcessMathMarkdown({ markdown: withImages })
 }
 
