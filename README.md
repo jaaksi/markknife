@@ -1,42 +1,66 @@
-# Markknife
+# MarkKnife
 
-一个简洁的** Markdown 查看 / 编辑应用**(从开源项目 [Tolaria](https://github.com/refactoringhq/tolaria) 剥离而来)。
+🇺🇸 [English](README.md) | 🇨🇳 [简体中文](README.zh-CN.md)
 
-技术栈:Tauri 2(Rust) + React 19 + TypeScript + Vite + Tailwind + shadcn/ui;富文本用 BlockNote,源码编辑用 CodeMirror 6,数学公式 KaTeX、图表 Mermaid。
+A clean, fast **Markdown viewer & editor** for the desktop — built on a [Tolaria](https://github.com/refactoringhq/tolaria) fork.
 
-## 三种模式
+Open Markdown files in tabs and read or edit them in whichever way suits the moment: a polished read-only render, a live WYSIWYG editor, or a side-by-side source/preview split. Math (KaTeX), diagrams (Mermaid), code highlighting, and images all just work.
 
-- **查看** — 只读富文本渲染(BlockNote)
-- **所见即所得** — 可编辑富文本
-- **分栏** — 左 CodeMirror 源码 + 右只读预览
+<p>
+  <img src="docs/images/screenshot.png" alt="MarkKnife screenshot" width="800">
+</p>
 
-共享同一份内存中的 Markdown 文本为唯一真相源;附带可自动生成的目录(TOC)面板。
+## Features
 
-## 安装(macOS)
+- **Three view modes**, switchable per file:
+  - **View** — read-only rich-text render
+  - **WYSIWYG** — editable rich text (the default when you open a file)
+  - **Split** — CodeMirror source on one side, live read-only preview on the other (orientation configurable)
+- **Multi-tab** editing — open many files at once; drag a tab out into its own window.
+- **Auto-save** — changes are written back to disk automatically (debounced).
+- **Outline (TOC)** panel with scroll-spy, click-to-jump, and collapsible tree.
+- **In-document search** (`Cmd/Ctrl+F`).
+- **Math & diagrams** — KaTeX formulas, Mermaid diagrams, syntax-highlighted code blocks, inline images.
+- **Customizable** reading width / font size / line height, configurable shortcuts, and **English / 简体中文** UI.
+- **Native niceties** — open `.md`/`.markdown` via the OS "Open With", recent-files start page, and silent auto-update.
 
-下载 `.dmg`,打开后把 **MarkKnife** 拖到「应用程序」。
+## Install
 
-本应用**未经 Apple 公证**(项目没有 Apple 开发者账号),首次打开会被 macOS Gatekeeper 拦截(提示「已损坏」或「来自身份不明的开发者」)。按任一方式放行即可,之后正常使用、自动更新不受影响:
+Download the latest build for your platform from the **[releases / download page](https://jaaksi.github.io/markknife/)**.
 
-- **右键** App →「打开」,在弹窗里再点「打开」;
-- 新系统(Sequoia 15+):双击被拦后,到 **系统设置 → 隐私与安全性**,点最下方「仍要打开」;
-- 或在终端执行:`xattr -dr com.apple.quarantine /Applications/MarkKnife.app`
+### macOS
 
-> **First launch on macOS** — the app is **not notarized** (no Apple Developer account), so Gatekeeper blocks it.
-> Right‑click the app ▸ **Open** (then **Open** again), or go to **System Settings ▸ Privacy & Security ▸ Open Anyway**,
-> or run `xattr -dr com.apple.quarantine /Applications/MarkKnife.app`. Auto‑update keeps working afterwards.
+Open the `.dmg` and drag **MarkKnife** into your Applications folder.
 
-## 开发
+The app is **not notarized** (the project has no Apple Developer account), so on first launch Gatekeeper will block it ("damaged" or "unidentified developer"). Allow it once with any of the following — auto-update keeps working afterwards:
+
+- **Right-click** the app → **Open**, then click **Open** again in the dialog;
+- On Sequoia 15+: after the block, go to **System Settings → Privacy & Security** and click **Open Anyway** at the bottom;
+- Or run in a terminal: `xattr -dr com.apple.quarantine /Applications/MarkKnife.app`
+
+### Windows / Linux
+
+Download the installer (`.msi`/`.exe`) or AppImage from the download page and run it.
+
+## Development
 
 ```bash
-pnpm dev        # 浏览器开发(dev mock,无 Tauri)
-pnpm tauri dev  # 原生应用开发
-pnpm build      # tsc -b && vite build
-pnpm lint       # eslint(0 警告)
+pnpm install
+pnpm dev         # Browser dev (uses an in-app Tauri mock; no native features)
+pnpm tauri dev   # Native app dev
+pnpm build       # tsc -b && vite build
+pnpm lint        # eslint (must be 0 warnings)
+pnpm tauri build # Produce a packaged build (.dmg etc.)
 ```
 
-详见 [AGENTS.md](AGENTS.md)。
+Tech stack: **Tauri 2 (Rust) + React 19 + TypeScript + Vite + Tailwind v4 + shadcn/ui**, with **BlockNote** for rich text, **CodeMirror 6** for source editing, **KaTeX** for math, and **Mermaid** for diagrams.
 
-## 致谢
+> Contributing? See [CLAUDE.md](CLAUDE.md) for the architecture overview and conventions.
 
-基于 Luca Ronin 的开源项目 **Tolaria**(MIT)精简改造而成。
+## Acknowledgements
+
+Built as a trimmed-down fork of **Tolaria** by Luca Ronin (MIT). Many thanks to the original project.
+
+## License
+
+[AGPL-3.0-or-later](LICENSE).
