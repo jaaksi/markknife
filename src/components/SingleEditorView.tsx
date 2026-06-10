@@ -14,6 +14,7 @@ import {
   useCreateBlockNote,
   useDictionary,
   type DefaultReactGridSuggestionItem,
+  type FormattingToolbarProps,
   type LinkToolbarProps,
 } from '@blocknote/react'
 import { components } from '@blocknote/mantine'
@@ -1054,33 +1055,44 @@ type EditorInteractionControllersProps = ReturnType<typeof useSuggestionMenuItem
   vaultPath?: string
 }
 
+/** 工具栏浮层公共配置;模块级常量,保持引用稳定。 */
+const TOOLBAR_FLOATING_UI_OPTIONS = {
+  elementProps: {
+    onMouseDownCapture: handleToolbarMouseDownCapture,
+  },
+}
+
 function EditorInteractionControllers({
   getEmojiItems,
   getSlashMenuItems,
   vaultPath,
 }: EditorInteractionControllersProps) {
+  // 这两个渲染函数会被控制器当作「组件类型」使用(<Component />)。若用内联箭头,
+  // 每次重渲染都是新的组件类型,React 会卸载重建整棵工具栏子树——悬停按钮时
+  // tooltip 随之反复销毁重开,表现为气泡不停闪烁。必须用 useCallback 稳定身份。
+  const renderFormattingToolbar = useCallback(
+    (props: FormattingToolbarProps) => (
+      <MarkknifeFormattingToolbar {...props} vaultPath={vaultPath} />
+    ),
+    [vaultPath],
+  )
+  const renderLinkToolbar = useCallback(
+    (props: LinkToolbarProps) => (
+      <MarkknifeLinkToolbar {...props} vaultPath={vaultPath} />
+    ),
+    [vaultPath],
+  )
+
   return (
     <>
       <SideMenuController sideMenu={MarkknifeSideMenu} />
       <MarkknifeFormattingToolbarController
-        formattingToolbar={(props) => (
-          <MarkknifeFormattingToolbar {...props} vaultPath={vaultPath} />
-        )}
-        floatingUIOptions={{
-          elementProps: {
-            onMouseDownCapture: handleToolbarMouseDownCapture,
-          },
-        }}
+        formattingToolbar={renderFormattingToolbar}
+        floatingUIOptions={TOOLBAR_FLOATING_UI_OPTIONS}
       />
       <LinkToolbarController
-        linkToolbar={(props) => (
-          <MarkknifeLinkToolbar {...props} vaultPath={vaultPath} />
-        )}
-        floatingUIOptions={{
-          elementProps: {
-            onMouseDownCapture: handleToolbarMouseDownCapture,
-          },
-        }}
+        linkToolbar={renderLinkToolbar}
+        floatingUIOptions={TOOLBAR_FLOATING_UI_OPTIONS}
       />
       <SuggestionMenuController
         triggerCharacter="/"
