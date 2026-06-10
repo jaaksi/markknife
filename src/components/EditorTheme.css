@@ -551,6 +551,17 @@
   background-color: transparent !important;
 }
 
+/* 语法高亮:Shiki 以双主题输出,每个 token 同时带 --shiki-light / --shiki-dark;
+   这里按编辑器表面(.editor-scroll-area)的 data-theme 用纯 CSS 选色——
+   切换深色 / 阅读样式即时重新着色,无需重新高亮(规避装饰缓存导致的主题错配)。 */
+.editor__blocknote-container .bn-block-content[data-content-type="codeBlock"] .shiki {
+  color: var(--shiki-light);
+}
+[data-theme="dark"] .editor__blocknote-container .bn-block-content[data-content-type="codeBlock"] .shiki,
+.dark .editor__blocknote-container .bn-block-content[data-content-type="codeBlock"] .shiki {
+  color: var(--shiki-dark);
+}
+
 /* --- Blockquote --- */
 .editor__blocknote-container [data-content-type="blockquote"],
 .editor__blocknote-container blockquote {

@@ -63,20 +63,24 @@ type MarkknifeNamedLanguageRegistration = Record<string, unknown> & {
 const GO_LANGUAGE = codeBlockLanguageOptions([GO_CODE_BLOCK_LANGUAGE]).go
 const EXTRA_SUPPORTED_LANGUAGES = codeBlockLanguageOptions(EXTRA_CODE_BLOCK_LANGUAGES)
 
-function currentCodeBlockTheme() {
-  if (typeof document === 'undefined') return LIGHT_CODE_THEME
-
-  // 全局深色(html.dark / html[data-theme=dark])与「深色」阅读样式都要用 github-dark:
-  // 后者把 data-theme="dark" 挂在编辑器表面 .editor-scroll-area 上(非根元素),
-  // 若漏判会在深色背景上渲染浅色主题的近黑色文字,导致代码不可读。
-  const root = document.documentElement
-  const globalDark = root.classList.contains('dark') || root.dataset.theme === 'dark'
-  const surfaceDark = document.querySelector('.editor-scroll-area[data-theme="dark"]') !== null
-  return globalDark || surfaceDark ? DARK_CODE_THEME : LIGHT_CODE_THEME
-}
-
-function prioritizeTheme(themes: string[], theme: string) {
-  return [theme, ...themes.filter((candidate) => candidate !== theme)]
+/**
+ * 让 Shiki 以「双主题」方式输出每个 token:同时写入 --shiki-light / --shiki-dark 两个 CSS 变量、
+ * 不写死 color。最终用哪套颜色交给 CSS 按编辑器表面的 data-theme 选(见 EditorTheme.css)。
+ * 好处:切换深色 / 阅读样式时纯靠 CSS 重新着色、无需重新高亮——从而规避 prosemirror-highlight
+ * 的装饰缓存(首次高亮的主题会被缓存,切到另一模式时颜色对不上:浅色背景出现深色配色等)。
+ */
+function withDualThemeTokens(
+  highlighter: MarkknifeCodeHighlighter,
+): MarkknifeCodeHighlighter['codeToTokens'] {
+  return ((code, options) => {
+    const next = { ...(options ?? {}) } as Record<string, unknown>
+    delete next.theme // 单主题与双主题选项互斥,去掉调用方传入的 theme
+    return highlighter.codeToTokens(code, {
+      ...next,
+      themes: { light: LIGHT_CODE_THEME, dark: DARK_CODE_THEME },
+      defaultColor: false,
+    } as Parameters<MarkknifeCodeHighlighter['codeToTokens']>[1])
+  }) as MarkknifeCodeHighlighter['codeToTokens']
 }
 
 function languageInputs(languages: readonly MarkknifeLanguageInput[]): MarkknifeLanguageInput[] {
@@ -155,7 +159,7 @@ async function createMarkknifeCodeHighlighter(): Promise<MarkknifeCodeHighlighte
   const highlighter = await codeBlockOptions.createHighlighter()
   return {
     ...highlighter,
-    getLoadedThemes: () => prioritizeTheme(highlighter.getLoadedThemes(), currentCodeBlockTheme()),
+    codeToTokens: withDualThemeTokens(highlighter),
     loadLanguage: async (...languages) => {
       const expandedLanguages = await Promise.all(languages.map(expandLanguage))
       return highlighter.loadLanguage(...expandedLanguages.flat())
