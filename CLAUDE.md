@@ -54,7 +54,7 @@ cargo fmt   --manifest-path=src-tauri/Cargo.toml -- --check
 - 文档内查找(Cmd/Ctrl+F):[SearchBar.tsx](src/markdown-app/SearchBar.tsx) + [useDocumentSearch.ts](src/markdown-app/useDocumentSearch.ts),搜索富文本渲染区。
 - 文件读写:[fileIo.ts](src/markdown-app/fileIo.ts) → [invokeCommand.ts](src/markdown-app/invokeCommand.ts) → Tauri 命令。系统「打开方式 / 双击」走 [useOpenWithFile.ts](src/markdown-app/useOpenWithFile.ts)(冷启动 `take_pending_open_file` 领取 + 运行时 `open-file` 事件);多窗口拆分走 `detach_tab_to_window` + `take_detached_open_path`。
 - 偏好(均 localStorage 持久化):`useReadingPreferences`(宽度/字号/行高)、`useReadingStyle`、`useTocPreferences`(默认显示/左右)、`useEditorPreferences`(分栏方向、打开文件默认在新窗口)、`useShortcuts`(可自定义快捷键)、`useLanguage`(界面语言)。这些 Provider 在 `MarkdownApp` 根部统一挂载。
-- 设置弹窗 [SettingsDialog.tsx](src/markdown-app/SettingsDialog.tsx)(左导航 + 右面板;设计稿 [design/settings-mockup.html](design/settings-mockup.html));自动更新 [useAppUpdate.ts](src/markdown-app/useAppUpdate.ts) / [UpdateDialog.tsx](src/markdown-app/UpdateDialog.tsx)(指向 GitHub Pages,minisign 签名)。
+- 设置弹窗 [SettingsDialog.tsx](src/markdown-app/SettingsDialog.tsx)(左导航 + 右面板;设计稿 [design/settings-mockup.html](design/settings-mockup.html));自动更新 [useAppUpdate.ts](src/markdown-app/useAppUpdate.ts) / [UpdateBanner.tsx](src/markdown-app/UpdateBanner.tsx)(顶部横幅;端点指向 GitHub Release,minisign 签名)。
 
 ### i18n(重要)
 

@@ -5,7 +5,7 @@ import { MarkdownReadonlyView } from './MarkdownReadonlyView'
 import { MarkdownEditableView } from './MarkdownEditableView'
 import { SplitView, type SplitOrientation } from './SplitView'
 import { SettingsDialog } from './SettingsDialog'
-import { UpdateDialog } from './UpdateDialog'
+import { UpdateBanner } from './UpdateBanner'
 import { useAppUpdate } from './useAppUpdate'
 import { ReadingPreferencesProvider } from './useReadingPreferences'
 import { ReadingStyleProvider } from './useReadingStyle'
@@ -554,6 +554,8 @@ function MarkdownAppInner() {
         tabActions={tabActions}
         onOpenSettings={() => setSettingsOpen(true)}
       />
+      {/* 启动静默检查发现新版时的顶部更新横幅(非模态,不打断编辑) */}
+      <UpdateBanner appUpdate={appUpdate} />
       <div className="relative flex min-h-0 flex-1">
         {filePath && activeTab ? (
           <>
@@ -606,7 +608,6 @@ function MarkdownAppInner() {
         )}
       </div>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} appUpdate={appUpdate} />
-      <UpdateDialog appUpdate={appUpdate} />
 
       {/* 保存结果 toast:成功「已保存」,失败显示错误,底部居中浮出 */}
       {saveFeedback && (
