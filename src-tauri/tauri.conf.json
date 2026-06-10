@@ -87,7 +87,7 @@
     },
     "updater": {
       "endpoints": [
-        "https://jaaksi.github.io/markknife/stable/latest.json"
+        "https://github.com/jaaksi/markknife/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"
