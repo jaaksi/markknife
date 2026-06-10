@@ -26,7 +26,7 @@ Open Markdown files in tabs and read or edit them in whichever way suits the mom
 
 ## Install
 
-Download the latest build for your platform from the **[releases / download page](https://jaaksi.github.io/markknife/)**.
+Download the latest build for your platform from the **[releases page](https://github.com/jaaksi/markknife/releases/latest)**.
 
 ### macOS
 
@@ -38,9 +38,9 @@ The app is **not notarized** (the project has no Apple Developer account), so on
 - On Sequoia 15+: after the block, go to **System Settings → Privacy & Security** and click **Open Anyway** at the bottom;
 - Or run in a terminal: `xattr -dr com.apple.quarantine /Applications/MarkKnife.app`
 
-### Windows / Linux
+### Windows
 
-Download the installer (`.msi`/`.exe`) or AppImage from the download page and run it.
+Download the installer (`.msi`/`.exe`) from the releases page and run it.
 
 ## Development
 

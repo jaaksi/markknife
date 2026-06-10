@@ -6,7 +6,10 @@ use tauri_plugin_updater::UpdaterExt;
 const ALPHA_METADATA_ASSET_NAME: &str = "alpha-latest.json";
 const GITHUB_RELEASES_API_URL: &str =
     "https://api.github.com/repos/jaaksi/markknife/releases?per_page=100";
-const RELEASES_BASE_URL: &str = "https://jaaksi.github.io/markknife";
+// 稳定通道元数据:始终指向 GitHub 最新正式 Release 里的 latest.json(由 CI 发布,见 .github/workflows/release.yml)。
+// 注意:这里是「检查更新」的真实端点(本模块用 endpoints() 覆盖),tauri.conf.json 里的 endpoints 仅作默认值。
+const STABLE_METADATA_URL: &str =
+    "https://github.com/jaaksi/markknife/releases/latest/download/latest.json";
 const UPDATER_HTTP_TIMEOUT: Duration = Duration::from_secs(5);
 const UPDATER_USER_AGENT: &str = concat!("Markknife/", env!("CARGO_PKG_VERSION"));
 
@@ -68,16 +71,9 @@ impl ReleaseChannel {
         }
     }
 
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Alpha => "alpha",
-            Self::Stable => "stable",
-        }
-    }
-
     fn updater_endpoint(self) -> Result<Url, String> {
-        let endpoint = format!("{}/{}/latest.json", RELEASES_BASE_URL, self.as_str());
-        Url::parse(&endpoint).map_err(|e| format!("Invalid updater endpoint: {e}"))
+        // alpha 找不到专属元数据时也回退到稳定通道(稳定版本号必不大于 alpha,最多提示「无更新」,不会误降级)。
+        Url::parse(STABLE_METADATA_URL).map_err(|e| format!("Invalid updater endpoint: {e}"))
     }
 }
 
@@ -295,13 +291,15 @@ mod tests {
 
     #[test]
     fn release_channel_endpoints_match_expected_paths() {
+        // 稳定通道与 alpha 的兜底端点都指向 GitHub 最新正式 Release 的 latest.json。
+        let expected = "https://github.com/jaaksi/markknife/releases/latest/download/latest.json";
         assert_eq!(
             ReleaseChannel::Alpha.updater_endpoint().unwrap().as_str(),
-            "https://jaaksi.github.io/markknife/alpha/latest.json"
+            expected
         );
         assert_eq!(
             ReleaseChannel::Stable.updater_endpoint().unwrap().as_str(),
-            "https://jaaksi.github.io/markknife/stable/latest.json"
+            expected
         );
     }
 

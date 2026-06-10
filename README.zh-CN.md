@@ -26,7 +26,7 @@
 
 ## 安装
 
-从 **[发布 / 下载页](https://jaaksi.github.io/markknife/)** 下载对应平台的最新版本。
+从 **[发布页](https://github.com/jaaksi/markknife/releases/latest)** 下载对应平台的最新版本。
 
 ### macOS
 
@@ -38,9 +38,9 @@
 - 新系统(Sequoia 15+):双击被拦后,到 **系统设置 → 隐私与安全性**,点最下方「仍要打开」;
 - 或在终端执行:`xattr -dr com.apple.quarantine /Applications/MarkKnife.app`
 
-### Windows / Linux
+### Windows
 
-从下载页获取安装包(`.msi`/`.exe`)或 AppImage 并运行。
+从发布页获取安装包(`.msi`/`.exe`)并运行。
 
 ## 开发
 
