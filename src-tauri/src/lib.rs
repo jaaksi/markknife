@@ -302,6 +302,7 @@ fn with_invoke_handler(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<ta
 
 /// 记录「由系统打开方式 / 双击」打开的文件路径：暂存供前端冷启动领取，并实时通知前端（热打开）。
 #[cfg(desktop)]
+#[cfg(target_os = "macos")]
 fn record_opened_path(app_handle: &tauri::AppHandle, path: String) {
     use tauri::{Emitter, Manager};
 
@@ -317,6 +318,9 @@ fn record_opened_path(app_handle: &tauri::AppHandle, path: String) {
 fn handle_run_event(app_handle: &tauri::AppHandle, event: &tauri::RunEvent) {
     window_state::handle_run_event(app_handle, event);
 
+    // `RunEvent::Opened` 仅 macOS 存在(Finder 双击 / 「打开方式」);
+    // Windows/Linux 走 capture_cli_open_file 解析启动参数,不经过这里。
+    #[cfg(target_os = "macos")]
     if let tauri::RunEvent::Opened { urls } = event {
         for url in urls {
             if let Ok(path) = url.to_file_path() {
