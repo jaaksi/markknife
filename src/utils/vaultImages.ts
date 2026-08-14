@@ -9,6 +9,7 @@ import {
   portableAttachmentPathFromCurrentVaultAssetUrl,
   vaultAttachmentAssetUrl,
 } from './vaultAttachments'
+import { advanceMarkdownFence, type MarkdownFence } from './markdownFences'
 
 type Markdown = string
 type VaultPath = string
@@ -18,7 +19,10 @@ type MarkdownImageUrl = string
 
 const URL_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/
 const WINDOWS_DRIVE_PATH_PATTERN = /^[A-Za-z]:[\\/]/
+const BACKSLASH_CODE = 92
 const MARKDOWN_IMAGE_URL_FORBIDDEN_CHARS = ['\t', '\n', '\r', '"']
+const IMAGE_FILE_EXTENSION_PATTERN = /\.(?:avif|bmp|gif|jpe?g|png|svg|webp|tiff?)$/iu
+const WIKILINK_IMAGE_EMBED_PATTERN = /!\[\[([^\]\n]+)\]\]/g
 
 interface MarkdownImageToken {
   alt: string
@@ -54,6 +58,20 @@ interface NoteDirectoryRelativePathRequest {
 
 interface MarkdownDestinationRequest {
   destination: string
+}
+
+interface MarkdownDestinationScanState {
+  inTitle: boolean
+  parenthesisDepth: number
+}
+
+interface WikilinkImageEmbed {
+  alt: string
+  url: MarkdownImageUrl
+}
+
+interface WikilinkImageRequest {
+  target: string
 }
 
 interface UrlOnlyRequest {
@@ -96,6 +114,77 @@ function rewriteMarkdownImages(
   return rewritten + markdown.slice(cursor)
 }
 
+function trailingBackslashCount(markdown: Markdown, index: number): number {
+  let cursor = index
+
+  while (cursor > 0) {
+    if (markdown.charCodeAt(cursor - 1) !== BACKSLASH_CODE) break
+    cursor -= 1
+  }
+
+  return index - cursor
+}
+
+function isEscaped(markdown: Markdown, index: number): boolean {
+  return trailingBackslashCount(markdown, index) % 2 === 1
+}
+
+function isTitleQuoteStart(markdown: Markdown, index: number, destinationStart: number): boolean {
+  const previous = markdown[index - 1]
+  if (previous !== ' ' && previous !== '\t') return false
+
+  return markdown.slice(destinationStart, index).trim().length > 0
+}
+
+function handleTitleScanCharacter(state: MarkdownDestinationScanState, char: string): boolean {
+  if (!state.inTitle) return false
+  if (char === '"') state.inTitle = false
+  return true
+}
+
+function handleParenthesisScanCharacter(state: MarkdownDestinationScanState, char: string): boolean {
+  if (char === '(') {
+    state.parenthesisDepth += 1
+    return false
+  }
+
+  if (char !== ')') return false
+  if (state.parenthesisDepth === 0) return true
+  state.parenthesisDepth -= 1
+  return false
+}
+
+function isDestinationClosingParenthesis(
+  markdown: Markdown,
+  cursor: number,
+  destinationStart: number,
+  state: MarkdownDestinationScanState,
+): boolean {
+  const char = markdown[cursor]
+  if (isEscaped(markdown, cursor)) return false
+  if (handleTitleScanCharacter(state, char)) return false
+
+  if (char === '"' && isTitleQuoteStart(markdown, cursor, destinationStart)) {
+    state.inTitle = true
+    return false
+  }
+
+  return handleParenthesisScanCharacter(state, char)
+}
+
+function markdownImageDestinationEnd(markdown: Markdown, destinationStart: number): number | null {
+  const state = {
+    inTitle: false,
+    parenthesisDepth: 0,
+  }
+
+  for (let cursor = destinationStart; cursor < markdown.length; cursor += 1) {
+    if (isDestinationClosingParenthesis(markdown, cursor, destinationStart, state)) return cursor
+  }
+
+  return null
+}
+
 function nextMarkdownImage(markdown: Markdown, startIndex: number): MarkdownImageToken | null {
   const start = markdown.indexOf('![', startIndex)
   if (start === -1) return null
@@ -103,10 +192,11 @@ function nextMarkdownImage(markdown: Markdown, startIndex: number): MarkdownImag
   const altEnd = markdown.indexOf('](', start + 2)
   if (altEnd === -1) return nextMarkdownImage(markdown, start + 2)
 
-  const destinationEnd = markdown.indexOf(')', altEnd + 2)
-  if (destinationEnd === -1) return null
+  const destinationStart = altEnd + 2
+  const destinationEnd = markdownImageDestinationEnd(markdown, destinationStart)
+  if (destinationEnd === null) return nextMarkdownImage(markdown, start + 2)
 
-  const destinationText = markdown.slice(altEnd + 2, destinationEnd)
+  const destinationText = markdown.slice(destinationStart, destinationEnd)
   const destination = parseMarkdownImageDestination({
     destination: destinationText,
   })
@@ -126,7 +216,8 @@ function nextMarkdownImage(markdown: Markdown, startIndex: number): MarkdownImag
 function parseMarkdownImageDestination(request: MarkdownDestinationRequest): MarkdownImageDestination | null {
   const { destination } = request
   const titleStart = destination.indexOf(' "')
-  const url = titleStart === -1 ? destination : destination.slice(0, titleStart)
+  const rawUrl = titleStart === -1 ? destination : destination.slice(0, titleStart)
+  const url = unwrapAngleBracketDestination(rawUrl)
   const title = titleStart === -1 ? '' : destination.slice(titleStart)
   if (url.length === 0) return null
   if (MARKDOWN_IMAGE_URL_FORBIDDEN_CHARS.some(char => url.includes(char))) return null
@@ -134,14 +225,76 @@ function parseMarkdownImageDestination(request: MarkdownDestinationRequest): Mar
   return { title, url }
 }
 
-function hasUrlScheme(request: UrlOnlyRequest): boolean {
-  return URL_SCHEME_PATTERN.test(request.url)
+function unwrapAngleBracketDestination(url: MarkdownImageUrl): MarkdownImageUrl {
+  return url.startsWith('<') && url.endsWith('>') ? url.slice(1, -1) : url
+}
+
+function wikilinkImagePath(request: WikilinkImageRequest): string {
+  const pipeIndex = request.target.indexOf('|')
+  return (pipeIndex === -1 ? request.target : request.target.slice(0, pipeIndex)).trim()
+}
+
+function wikilinkImageDisplay(request: WikilinkImageRequest): string {
+  const pipeIndex = request.target.indexOf('|')
+  return pipeIndex === -1 ? '' : request.target.slice(pipeIndex + 1).trim()
+}
+
+function imageAltFromPath(path: string): string {
+  const decodedPath = decodePathUrl({ url: path })
+  return decodedPath.split(/[\\/]/u).filter(Boolean).at(-1) ?? decodedPath
+}
+
+function isExplicitWikilinkImagePath(path: string): boolean {
+  if (hasUrlScheme({ url: path })) return true
+  if (isFilesystemAbsolutePath({ path })) return true
+  return path.startsWith('.')
+}
+
+function portableWikilinkImageUrl(path: string): MarkdownImageUrl {
+  if (isExplicitWikilinkImagePath(path)) return path
+  return path.includes('/') || path.includes('\\') ? path : `attachments/${path}`
+}
+
+function parseWikilinkImageEmbed(request: WikilinkImageRequest): WikilinkImageEmbed | null {
+  const path = wikilinkImagePath(request)
+  if (!IMAGE_FILE_EXTENSION_PATTERN.test(path)) return null
+
+  const display = wikilinkImageDisplay(request)
+  return {
+    alt: display || imageAltFromPath(path),
+    url: portableWikilinkImageUrl(path),
+  }
+}
+
+function rewriteWikilinkImageEmbeds(
+  markdown: Markdown,
+  transformUrl: (url: MarkdownImageUrl) => MarkdownImageUrl | null,
+): Markdown {
+  return markdown.replace(WIKILINK_IMAGE_EMBED_PATTERN, (match, target: string) => {
+    const image = parseWikilinkImageEmbed({ target })
+    if (!image) return match
+
+    const nextUrl = transformUrl(image.url)
+    return nextUrl ? `![${image.alt}](${nextUrl})` : match
+  })
 }
 
 function isFilesystemAbsolutePath(request: PathOnlyRequest): boolean {
   return request.path.startsWith('/')
     || WINDOWS_DRIVE_PATH_PATTERN.test(request.path)
     || request.path.startsWith('\\\\')
+}
+
+function hasRelativeOrRootPrefix(url: string): boolean {
+  return /^(?:\.{1,2}\/|[/\\?#])/u.test(url)
+}
+
+function isBareImageUrl(request: UrlOnlyRequest): boolean {
+  const { url } = request
+  if (!url) return false
+  if (hasRelativeOrRootPrefix(url)) return false
+  if (hasUrlScheme({ url })) return false
+  return !isFilesystemAbsolutePath({ path: url })
 }
 
 function usesWindowsSeparators(request: PathOnlyRequest): boolean {
@@ -172,7 +325,7 @@ function pathSegments(request: PathOnlyRequest): string[] {
   return normalized.split('/')
 }
 
-function popPathSegment(segments: string[]): void {
+const popPathSegment = (segments: string[]): void => {
   const last = segments.at(-1)
   if (!last || last === '' || /^[A-Za-z]:$/.test(last)) return
   if (last === '.') {
@@ -193,20 +346,6 @@ function appendRelativeSegment(segments: string[], segment: string): void {
     return
   }
   segments.push(segment)
-}
-
-function joinNoteRelativePath(request: NoteRelativePathRequest): AbsolutePath {
-  const { notePath, relativeUrl } = request
-  const noteDir = noteDirectoryPath({ notePath })
-  const segments = pathSegments({ path: noteDir })
-  const useBackslash = usesWindowsSeparators({ path: noteDir })
-
-  for (const segment of decodePathUrl({ url: relativeUrl }).replace(/\\/g, '/').split('/')) {
-    appendRelativeSegment(segments, segment)
-  }
-
-  const joined = segments.join('/') || '.'
-  return useBackslash ? joined.replace(/\//g, '\\') : joined
 }
 
 function samePathSegment(request: PathSegmentComparisonRequest): boolean {
@@ -257,7 +396,11 @@ function relativePathFromNoteDirectory(request: NoteDirectoryRelativePathRequest
 function resolvePortableAttachmentUrl(request: ImageUrlRequest): MarkdownImageUrl | null {
   const { url, vaultPath } = request
   if (!isPortableAttachmentPath({ path: url })) return null
-  return vaultAttachmentAssetUrl({ vaultPath, attachmentPath: url })
+  const attachmentPath = decodePathUrl({ url })
+  return resolveAssetUrl(() => vaultAttachmentAssetUrl({
+    vaultPath,
+    attachmentPath,
+  }))
 }
 
 function resolveLegacyAttachmentAssetUrl(request: ImageUrlRequest): MarkdownImageUrl | null {
@@ -266,25 +409,36 @@ function resolveLegacyAttachmentAssetUrl(request: ImageUrlRequest): MarkdownImag
   if (isCurrentVaultAssetUrl({ url, vaultPath })) return null
 
   const attachmentPath = portableAttachmentPathFromAnyAssetUrl({ url })
-  return attachmentPath ? vaultAttachmentAssetUrl({ vaultPath, attachmentPath }) : null
+  return attachmentPath ? resolveAssetUrl(() => vaultAttachmentAssetUrl({ vaultPath, attachmentPath })) : null
 }
 
 function resolveAbsoluteFilesystemUrl(request: UrlOnlyRequest): MarkdownImageUrl | null {
   const { url } = request
   return isFilesystemAbsolutePath({ path: url })
-    ? attachmentAssetUrlFromPath({ path: decodePathUrl({ url }) })
+    ? resolveAssetUrl(() => attachmentAssetUrlFromPath({ path: decodePathUrl({ url }) }))
     : null
 }
 
 function resolveNoteRelativeUrl(request: ImageUrlRequest): MarkdownImageUrl | null {
   const { url, notePath } = request
   if (!notePath || hasUrlScheme({ url })) return null
-  return attachmentAssetUrlFromPath({ path: joinNoteRelativePath({ notePath, relativeUrl: url }) })
+  return resolveAssetUrl(() => attachmentAssetUrlFromPath({
+    path: joinNoteRelativePath({ notePath, relativeUrl: url }),
+  }))
+}
+
+function resolveAssetUrl(resolve: () => MarkdownImageUrl): MarkdownImageUrl | null {
+  try {
+    return resolve()
+  } catch (error) {
+    console.warn('[image] Failed to prepare asset URL:', error)
+    return null
+  }
 }
 
 function resolveImageUrl(request: ImageUrlRequest): MarkdownImageUrl | null {
-  return resolvePortableAttachmentUrl(request)
-    ?? resolveLegacyAttachmentAssetUrl(request)
+  return resolveLegacyAttachmentAssetUrl(request)
+    ?? resolvePortableAttachmentUrl(request)
     ?? resolveAbsoluteFilesystemUrl({ url: request.url })
     ?? resolveNoteRelativeUrl(request)
 }
@@ -296,7 +450,26 @@ export function resolveImageUrls(
 ): Markdown {
   if (!isTauri() || !vaultPath) return markdown
 
-  return rewriteMarkdownImages(markdown, url => resolveImageUrl({ url, vaultPath, notePath }))
+  const transformUrl = (url: MarkdownImageUrl) => resolveImageUrl({ url, vaultPath, notePath })
+  return rewriteMarkdownImages(rewriteWikilinkImageEmbeds(markdown, transformUrl), transformUrl)
+}
+
+export function normalizeBareImageUrls(markdown: Markdown): Markdown {
+  if (!markdown.includes('![')) return markdown
+
+  let fence: MarkdownFence | null = null
+  return markdown.split(/(\r?\n)/u).map(part => {
+    if (part === '\n' || part === '\r\n') return part
+
+    const nextFence = advanceMarkdownFence(part, fence)
+    const isFenceBoundary = nextFence !== fence
+    fence = nextFence
+    if (isFenceBoundary || fence) return part
+
+    return rewriteMarkdownImages(part, imageUrl => (
+      isBareImageUrl({ url: imageUrl }) ? `./${imageUrl}` : null
+    ))
+  }).join('')
 }
 
 function portableCurrentAttachmentPath(request: ImageUrlRequest): MarkdownImageUrl | null {
@@ -333,4 +506,22 @@ export function portableImageUrls(
   if (!vaultPath) return markdown
 
   return rewriteMarkdownImages(markdown, url => portableImageUrl({ url, vaultPath, notePath }))
+}
+
+function hasUrlScheme(request: UrlOnlyRequest): boolean {
+  return URL_SCHEME_PATTERN.test(request.url)
+}
+
+function joinNoteRelativePath(request: NoteRelativePathRequest): AbsolutePath {
+  const { notePath, relativeUrl } = request
+  const noteDir = noteDirectoryPath({ notePath })
+  const segments = pathSegments({ path: noteDir })
+  const useBackslash = usesWindowsSeparators({ path: noteDir })
+
+  for (const segment of decodePathUrl({ url: relativeUrl }).replace(/\\/g, '/').split('/')) {
+    appendRelativeSegment(segments, segment)
+  }
+
+  const joined = segments.join('/') || '.'
+  return useBackslash ? joined.replace(/\//g, '\\') : joined
 }

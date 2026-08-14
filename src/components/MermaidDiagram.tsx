@@ -33,12 +33,17 @@ interface RenderState {
 let initialized = false
 let renderQueue = Promise.resolve()
 
+const TIMELINE_HEADER_PATTERN = /^\s*timeline(?:\s+(?:LR|TD))?\b/iu
+const TIMELINE_PERIOD_DELIMITER_PATTERN = /^(\s*)(.*?)(:\s+.*)$/u
+const TIMELINE_NON_PERIOD_LINE_PATTERN = /^\s*(?:$|%%|#|title\b|section\b|accTitle\s*:|accDescr\s*:|accDescr\s*\{|\})/iu
+
+// 离屏渲染容器需要有实际宽度,否则甘特图等依赖布局宽度的图表算不出坐标而渲染失败。
 const MERMAID_RENDER_HOST_STYLE = [
   'position:absolute',
   'left:-10000px',
   'top:-10000px',
-  'width:0',
-  'height:0',
+  'width:960px',
+  'min-height:1px',
   'overflow:hidden',
 ].join(';')
 
@@ -63,6 +68,34 @@ function initializeMermaid(mermaid: MermaidApi) {
   initialized = true
 }
 
+function isTimelineDiagram(diagram: string): boolean {
+  const firstStatement = diagram
+    .split(/\r?\n/u)
+    .map(line => line.trim())
+    .find(line => line.length > 0 && !line.startsWith('%%'))
+
+  return typeof firstStatement === 'string' && TIMELINE_HEADER_PATTERN.test(firstStatement)
+}
+
+function encodeTimelinePeriodLabelColons(line: string): string {
+  if (TIMELINE_NON_PERIOD_LINE_PATTERN.test(line)) return line
+
+  const match = TIMELINE_PERIOD_DELIMITER_PATTERN.exec(line)
+  if (!match) return line
+
+  const [, indent, periodLabel, rest] = match
+  if (!periodLabel.trim().includes(':')) return line
+
+  // timeline 用 ":" 作字段分隔符,时间标签里的冒号要转成实体才能正常渲染。
+  return `${indent}${periodLabel.replaceAll(':', '&#58;')}${rest}`
+}
+
+function normalizeTimelinePeriodLabelsForRender(diagram: string): string {
+  if (!isTimelineDiagram(diagram)) return diagram
+
+  return diagram.split('\n').map(encodeTimelinePeriodLabelColons).join('\n')
+}
+
 function appendMermaidRenderHost(): HTMLDivElement {
   const host = document.createElement('div')
   host.setAttribute('data-markknife-mermaid-render-host', '')
@@ -78,6 +111,25 @@ function removeMermaidRenderArtifacts(renderId: string, host: HTMLElement): void
   document.getElementById(`i${renderId}`)?.remove()
 }
 
+function hasSvgParseError(document: Document): boolean {
+  return document.getElementsByTagName('parsererror').length > 0
+}
+
+// 部分图形(如数据库节点)的文本默认左对齐,统一改成居中。
+function centerMermaidNodeLabels(svg: string): string {
+  const parsed = new DOMParser().parseFromString(svg, 'image/svg+xml')
+  if (hasSvgParseError(parsed)) return svg
+
+  parsed.querySelectorAll('.node .label text, .node text').forEach((label) => {
+    label.setAttribute('text-anchor', 'middle')
+    label.querySelectorAll('tspan').forEach((row) => {
+      row.setAttribute('text-anchor', 'middle')
+    })
+  })
+
+  return new XMLSerializer().serializeToString(parsed.documentElement)
+}
+
 async function renderMermaidDiagram({
   diagram,
   renderId,
@@ -90,8 +142,8 @@ async function renderMermaidDiagram({
     initializeMermaid(mermaid)
     const renderHost = appendMermaidRenderHost()
     try {
-      const result = await mermaid.render(renderId, diagram, renderHost)
-      return result.svg
+      const result = await mermaid.render(renderId, normalizeTimelinePeriodLabelsForRender(diagram), renderHost)
+      return centerMermaidNodeLabels(result.svg)
     } finally {
       removeMermaidRenderArtifacts(renderId, renderHost)
     }

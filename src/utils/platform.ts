@@ -15,7 +15,7 @@ export function isMac(): boolean {
   return userAgent.includes('Mac OS X') || userAgent.includes('Macintosh')
 }
 
-function isWindows(): boolean {
+export function isWindows(): boolean {
   return getUserAgent().includes('Windows')
 }
 

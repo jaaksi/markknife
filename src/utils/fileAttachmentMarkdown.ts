@@ -8,6 +8,7 @@ import {
   portableAttachmentPathFromCurrentVaultAssetUrl,
   portableAttachmentPathFromCurrentVaultPath,
 } from './vaultAttachments'
+import { advanceMarkdownFence, type MarkdownFence } from './markdownFences'
 
 interface FileAttachmentPayload {
   name: string
@@ -29,7 +30,6 @@ interface FlushOrdinaryBlocksOptions {
 
 type FileAttachmentLineTransform = (payload: FileAttachmentPayload) => string | null
 type AttachmentUrlReader = (value: unknown) => AttachmentUrl | null
-type MarkdownFence = { character: string; length: number }
 type AttachmentUrl = string
 type Markdown = string
 type MarkdownLine = string
@@ -86,10 +86,6 @@ function escapeMarkdownTitle(value: MarkdownText): MarkdownText {
 function escapeMarkdownDestination(value: AttachmentUrl): MarkdownText {
   if (/[\s<>]/u.test(value)) return `<${value.replace(/>/g, '%3E')}>`
   return value.replace(/\\/g, '\\\\').replace(/\)/g, '\\)')
-}
-
-function unescapeMarkdownText(value: MarkdownText): MarkdownText {
-  return value.replace(/\\([\\\]"'])/g, '$1')
 }
 
 function unescapeMarkdownDestination(value: MarkdownText): AttachmentUrl {
@@ -177,6 +173,18 @@ function readFileAttachmentToken(text: MarkdownText): FileAttachmentPayload | nu
   }
 }
 
+function matchedAttachmentUrl(match: RegExpExecArray, readUrl: AttachmentUrlReader): AttachmentUrl | null {
+  return readUrl(unescapeMarkdownDestination(match[3] ?? ''))
+}
+
+function matchedAttachmentName(match: RegExpExecArray, url: AttachmentUrl): MarkdownText {
+  return unescapeMarkdownText(match[2] ?? '') || fileNameFromUrl(url)
+}
+
+function matchedAttachmentCaption(match: RegExpExecArray): MarkdownText | undefined {
+  return match[4] ? unescapeMarkdownText(match[4]) : undefined
+}
+
 function readStandaloneFileAttachmentLink(
   text: MarkdownText,
   readUrl: AttachmentUrlReader = readAttachmentUrl,
@@ -184,24 +192,12 @@ function readStandaloneFileAttachmentLink(
   const match = STANDALONE_ATTACHMENT_LINK_PATTERN.exec(text)
   if (!match) return null
 
-  const url = readUrl(unescapeMarkdownDestination(match[3] ?? ''))
+  const url = matchedAttachmentUrl(match, readUrl)
   if (!url) return null
 
-  const name = unescapeMarkdownText(match[2] ?? '') || fileNameFromUrl(url)
-  const caption = match[4] ? unescapeMarkdownText(match[4]) : undefined
+  const name = matchedAttachmentName(match, url)
+  const caption = matchedAttachmentCaption(match)
   return fileAttachmentPayload({ name, url, caption })
-}
-
-function readFenceOpening(text: MarkdownText): MarkdownFence | null {
-  const match = /^( {0,3})(`{3,}|~{3,})/u.exec(text)
-  const fence = match?.[2]
-  return fence ? { character: fence.charAt(0), length: fence.length } : null
-}
-
-function isFenceClosing(text: MarkdownText, fence: MarkdownFence): boolean {
-  const match = /^( {0,3})(`{3,}|~{3,})[ \t]*$/u.exec(text)
-  const closing = match?.[2]
-  return !!closing && closing.charAt(0) === fence.character && closing.length >= fence.length
 }
 
 function transformAttachmentLine(
@@ -219,7 +215,7 @@ function transformAttachmentLine(
 function transformFencedLine(line: MarkdownLine, text: MarkdownText, fence: MarkdownFence): TransformedLine {
   return {
     line,
-    fence: isFenceClosing(text, fence) ? null : fence,
+    fence: advanceMarkdownFence(text, fence),
   }
 }
 
@@ -229,7 +225,7 @@ function transformUnfencedLine(
   readUrl: AttachmentUrlReader,
   transform: FileAttachmentLineTransform,
 ): TransformedLine {
-  const opening = readFenceOpening(text)
+  const opening = advanceMarkdownFence(text, null)
   if (opening) {
     return {
       line,
@@ -403,4 +399,8 @@ export function preProcessFileAttachmentMarkdown(
     markdown: options.markdown,
     transform: fileAttachmentToken,
   })
+}
+
+function unescapeMarkdownText(value: MarkdownText): MarkdownText {
+  return value.replace(/\\([\\\]"'])/g, '$1')
 }

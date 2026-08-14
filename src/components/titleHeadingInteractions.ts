@@ -1,10 +1,8 @@
 import { useCallback, type ClipboardEvent } from 'react'
 import { handleFreshListItemPlainTextPaste, type InlineContentEditor } from './freshListItemPaste'
+import { prepareTitleHeadingPaste, type TitleHeadingPasteEditor } from './titleHeadingPasteTarget'
 
-type TitleHeadingEditor = InlineContentEditor & {
-  document: Array<{ id?: unknown; type?: string }>
-  setTextCursorPosition: (blockId: string, placement: 'end') => void
-}
+type TitleHeadingEditor = InlineContentEditor & TitleHeadingPasteEditor
 
 type EditorActionRunner = (action: () => void) => void
 
@@ -32,14 +30,9 @@ function findTitleHeadingElement(target: HTMLElement): HTMLElement | null {
   return titleWrapper?.querySelector<HTMLElement>(TITLE_HEADING_SELECTOR) ?? null
 }
 
-function richClipboardPlainText(clipboardData: DataTransfer): string | null {
+function clipboardPlainText(clipboardData: DataTransfer): string | null {
   const text = clipboardData.getData('text/plain')
-  const richMimeType = 'text/' + 'html'
-  const hasRichMarkup = clipboardData.types
-    ? Array.from(clipboardData.types).includes(richMimeType)
-    : clipboardData.getData(richMimeType).length > 0
-
-  return text.length > 0 && hasRichMarkup ? text : null
+  return text.length > 0 ? text : null
 }
 
 export function useEditorPasteHandler(options: {
@@ -64,12 +57,12 @@ export function useEditorPasteHandler(options: {
     const titleHeading = findTitleHeadingElement(target)
     if (!titleHeading || !event.currentTarget.contains(titleHeading)) return
 
-    const text = richClipboardPlainText(event.clipboardData)
+    const text = clipboardPlainText(event.clipboardData)
     if (!text) return
 
     event.preventDefault()
     runEditorAction(() => {
-      editor.focus()
+      prepareTitleHeadingPaste(titleHeading, editor)
       editor.insertInlineContent(text, { updateSelection: true })
     })
   }, [editable, editor, runEditorAction])
@@ -84,7 +77,6 @@ export function queueTitleHeadingCursorRepair(
 
   queueMicrotask(() => {
     if (isSelectionInsideElement(titleHeading)) return
-
     const firstBlock = editor.document[0]
     if (firstBlock?.type !== 'heading' || typeof firstBlock.id !== 'string') return
 

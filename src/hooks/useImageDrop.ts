@@ -6,27 +6,55 @@ import { isTauri } from '../mock-tauri'
 import { cleanupTauriEventListeners } from '../utils/tauriEventCleanup'
 import { attachmentAssetUrlFromPath } from '../utils/vaultAttachments'
 
-const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif']
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff']
+const UNSUPPORTED_HEIC_EXTENSIONS = ['heic', 'heif']
+const UNSUPPORTED_HEIC_MIME_TYPES = ['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence']
 const TAURI_DRAG_DROP_EVENT = 'tauri://drag-drop'
 const TAURI_DRAG_LEAVE_EVENT = 'tauri://drag-leave'
 
 type ImageUrlHandler = (url: string) => void
+type UnsupportedImageImportError = {
+  fileName: string
+  format: 'HEIC'
+  kind: 'unsupported-heic'
+}
+export type ImageImportError = UnsupportedImageImportError | {
+  failedCount: number
+  kind: 'remote-download'
+  totalCount: number
+}
+type ImageImportErrorHandler = (error: ImageImportError) => void
 type TauriDropEvent = TauriEvent<TauriDragDropPayload>
+export type UploadImageFileResult = string | { props: { name: string; url: string } }
 type CopyImageToVaultRequest = {
   sourcePath: string
   vaultPath: string
 }
 type DroppedImagesRequest = {
   imagePaths: string[]
+  onImageImportError: ImageImportErrorHandler | undefined
   vaultPath: string | undefined
   onImageUrl: ImageUrlHandler | undefined
 }
 type NativeDropEventRequest = {
   event: TauriDropEvent
+  onImageImportError: ImageImportErrorHandler | undefined
   onImageUrl: ImageUrlHandler | undefined
   setIsDragOver: (isDragOver: boolean) => void
   vaultPath: string | undefined
+}
+
+export class UnsupportedImageFormatError extends Error implements UnsupportedImageImportError {
+  readonly fileName: string
+  readonly format = 'HEIC'
+  readonly kind = 'unsupported-heic'
+
+  constructor(fileName: string) {
+    super('HEIC and HEIF images are not supported by MarkKnife image import yet.')
+    this.name = 'UnsupportedImageFormatError'
+    this.fileName = fileName
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -35,6 +63,41 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function filenameFromPath(path: string): string {
+  return path.split(/[\\/]/u).pop() || path
+}
+
+function extensionFromFilename(filename: string): string {
+  return filename.split('.').pop()?.toLowerCase() ?? ''
+}
+
+function isUnsupportedHeicFilename(filename: string): boolean {
+  return UNSUPPORTED_HEIC_EXTENSIONS.includes(extensionFromFilename(filename))
+}
+
+function unsupportedHeicImportError(fileName: string): ImageImportError {
+  return {
+    kind: 'unsupported-heic',
+    fileName,
+    format: 'HEIC',
+  }
+}
+
+function isUnsupportedHeicFile(file: File): boolean {
+  return isUnsupportedHeicFilename(file.name) || UNSUPPORTED_HEIC_MIME_TYPES.includes(file.type.toLowerCase())
+}
+
+export function isUnsupportedImageFormatError(error: unknown): error is UnsupportedImageFormatError {
+  return error instanceof UnsupportedImageFormatError
+    || (
+      isRecord(error)
+      && Reflect.get(error, 'name') === 'UnsupportedImageFormatError'
+      && Reflect.get(error, 'kind') === 'unsupported-heic'
+      && Reflect.get(error, 'format') === 'HEIC'
+      && typeof Reflect.get(error, 'fileName') === 'string'
+    )
 }
 
 function isNativeDropPayload(payload: unknown): payload is TauriDragDropPayload {
@@ -54,31 +117,82 @@ function hasImageFiles(dt: DataTransfer): boolean {
 }
 
 function isImagePath(path: string): boolean {
-  const ext = path.split('.').pop()?.toLowerCase() ?? ''
-  return IMAGE_EXTENSIONS.includes(ext)
+  return IMAGE_EXTENSIONS.includes(extensionFromFilename(path))
 }
 
-/** Upload an image file — saves to vault/attachments in Tauri, returns data URL in browser */
-export async function uploadImageFile(file: File, vaultPath?: string): Promise<string> {
-  if (isTauri() && vaultPath) {
-    const buf = await file.arrayBuffer()
-    const bytes = new Uint8Array(buf)
-    let binary = ''
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes.at(i) ?? 0)
-    const base64 = btoa(binary)
-    const savedPath = await invoke<string>('save_image', {
-      vaultPath,
-      filename: file.name,
-      data: base64,
-    })
-    return attachmentAssetUrlFromPath({ path: savedPath })
+function isUnsupportedHeicPath(path: string): boolean {
+  return isUnsupportedHeicFilename(filenameFromPath(path))
+}
+
+export function emptyImageUploadResult(file: File): UploadImageFileResult {
+  return { props: { name: file.name, url: '' } }
+}
+
+function uploadErrorText(error: unknown): string {
+  if (error instanceof Error) return [error.name, error.message].filter(Boolean).join(': ')
+  if (typeof error === 'string') return error
+  if (!isRecord(error)) return ''
+
+  const name = Reflect.get(error, 'name')
+  const message = Reflect.get(error, 'message')
+  return [
+    typeof name === 'string' ? name : undefined,
+    typeof message === 'string' ? message : undefined,
+  ].filter(Boolean).join(': ')
+}
+
+function isUnreadableFileUploadError(error: unknown): boolean {
+  const text = uploadErrorText(error)
+  return text.includes('NotReadableError') || text.includes('could not be read')
+}
+
+function handleUploadFailure(file: File, error: unknown): UploadImageFileResult {
+  if (!isUnreadableFileUploadError(error)) throw error
+
+  console.warn('[image-upload] Skipped unreadable file upload:', error)
+  return emptyImageUploadResult(file)
+}
+
+function uploadedImageAssetUrl(file: File, path: string): UploadImageFileResult {
+  try {
+    return attachmentAssetUrlFromPath({ path })
+  } catch (error) {
+    console.warn('[image-upload] Failed to prepare uploaded image asset URL:', error)
+    return emptyImageUploadResult(file)
   }
+}
+
+function readBrowserImageFile(file: File): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result as string)
     reader.onerror = () => reject(reader.error)
     reader.readAsDataURL(file)
   })
+}
+
+/** Upload an image file — saves to vault/attachments in Tauri, returns data URL in browser */
+export async function uploadImageFile(file: File, vaultPath?: string): Promise<UploadImageFileResult> {
+  if (isUnsupportedHeicFile(file)) throw new UnsupportedImageFormatError(file.name)
+
+  try {
+    if (isTauri() && vaultPath) {
+      const buf = await file.arrayBuffer()
+      const bytes = new Uint8Array(buf)
+      let binary = ''
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes.at(i) ?? 0)
+      const base64 = btoa(binary)
+      const savedPath = await invoke<string>('save_image', {
+        vaultPath,
+        filename: file.name,
+        data: base64,
+      })
+      return uploadedImageAssetUrl(file, savedPath)
+    }
+    return await readBrowserImageFile(file)
+  } catch (error) {
+    return handleUploadFailure(file, error)
+  }
 }
 
 /** Copy a dropped file (by OS path) into vault/attachments and return its asset URL. */
@@ -90,21 +204,38 @@ async function copyImageToVault({
   return attachmentAssetUrlFromPath({ path: savedPath })
 }
 
+function logDroppedImageCopyFailure(error: unknown): void {
+  console.warn('[image-drop] Failed to copy dropped image into vault:', error)
+}
+
+function reportUnsupportedDroppedImages(
+  imagePaths: string[],
+  onImageImportError: ImageImportErrorHandler | undefined,
+): void {
+  const unsupportedPath = imagePaths.find(isUnsupportedHeicPath)
+  if (!unsupportedPath) return
+
+  onImageImportError?.(unsupportedHeicImportError(filenameFromPath(unsupportedPath)))
+}
+
 function insertDroppedImages({
   imagePaths,
+  onImageImportError,
   vaultPath,
   onImageUrl,
 }: DroppedImagesRequest): void {
   if (imagePaths.length === 0) return
+  reportUnsupportedDroppedImages(imagePaths, onImageImportError)
   if (!vaultPath || !onImageUrl) return
 
-  for (const sourcePath of imagePaths) {
-    void copyImageToVault({ sourcePath, vaultPath }).then(onImageUrl)
+  for (const sourcePath of imagePaths.filter(isImagePath)) {
+    void copyImageToVault({ sourcePath, vaultPath }).then(onImageUrl, logDroppedImageCopyFailure)
   }
 }
 
 function handleNativeDropEvent({
   event,
+  onImageImportError,
   onImageUrl,
   setIsDragOver,
   vaultPath,
@@ -117,7 +248,8 @@ function handleNativeDropEvent({
   if (payload.type === 'drop') {
     setIsDragOver(false)
     insertDroppedImages({
-      imagePaths: payload.paths.filter(isImagePath),
+      imagePaths: payload.paths,
+      onImageImportError,
       vaultPath,
       onImageUrl,
     })
@@ -145,13 +277,17 @@ async function registerNativeDropListeners(
 
 interface UseImageDropOptions {
   containerRef: RefObject<HTMLDivElement | null>
+  /** Called when an image-like file is recognized but not supported by MarkKnife. */
+  onImageImportError?: ImageImportErrorHandler
   /** Called with an asset URL for each image dropped via Tauri native drag-drop. */
   onImageUrl?: (url: string) => void
   vaultPath?: string
 }
 
-export function useImageDrop({ containerRef, onImageUrl, vaultPath }: UseImageDropOptions) {
+export function useImageDrop({ containerRef, onImageImportError, onImageUrl, vaultPath }: UseImageDropOptions) {
   const [isDragOver, setIsDragOver] = useState(false)
+  const onImageImportErrorRef = useRef(onImageImportError)
+  useEffect(() => { onImageImportErrorRef.current = onImageImportError }, [onImageImportError])
   const onImageUrlRef = useRef(onImageUrl)
   useEffect(() => { onImageUrlRef.current = onImageUrl }, [onImageUrl])
   const vaultPathRef = useRef(vaultPath)
@@ -202,6 +338,7 @@ export function useImageDrop({ containerRef, onImageUrl, vaultPath }: UseImageDr
         const nextUnlisteners = await registerNativeDropListeners((event) => {
           handleNativeDropEvent({
             event,
+            onImageImportError: onImageImportErrorRef.current,
             onImageUrl: onImageUrlRef.current,
             setIsDragOver,
             vaultPath: vaultPathRef.current,

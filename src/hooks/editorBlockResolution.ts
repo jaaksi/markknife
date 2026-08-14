@@ -2,8 +2,15 @@ import type { useCreateBlockNote } from '@blocknote/react'
 import { preProcessMathMarkdown, injectMathInBlocks } from '../utils/mathMarkdown'
 import { injectDurableEditorMarkdownBlocks, preProcessDurableEditorMarkdown } from '../utils/editorDurableMarkdown'
 import { injectMarkdownHighlightsInBlocks } from '../utils/markdownHighlightMarkdown'
-import { resolveImageUrls } from '../utils/vaultImages'
+import { normalizeBareImageUrls, resolveImageUrls } from '../utils/vaultImages'
 import { preProcessHtmlImageMarkdown } from '../utils/htmlImageMarkdown'
+import { preProcessSingleTildeStrikethrough } from '../utils/markdownStrikethrough'
+import {
+  injectBlankParagraphBlocks,
+  preProcessBlankBlockquoteParagraphs,
+  preProcessBlankParagraphs,
+  preProcessEmptyChecklistItems,
+} from '../utils/richEditorMarkdown'
 import { repairMalformedEditorBlocks } from './editorBlockRepair'
 import { inferCodeBlockLanguages } from '../utils/codeBlockLanguage'
 import {
@@ -139,17 +146,23 @@ function preProcessEditorMarkdown(
   notePath?: NotePath,
 ): PreprocessedMarkdown {
   const withDurableBlocks = preProcessDurableEditorMarkdown({ markdown })
+  const withEmptyChecklists = preProcessEmptyChecklistItems(withDurableBlocks)
+  const withBlankQuotes = preProcessBlankBlockquoteParagraphs(withEmptyChecklists)
+  const withBlankParagraphs = preProcessBlankParagraphs(withBlankQuotes)
   // 先把 HTML <img> 规范化成 Markdown 图片语法,再交给相对路径解析,这样文档里用 <img>
   // 写的图片(如 README 为居中 / 限宽而用的)也能在应用内显示。
-  const withHtmlImages = preProcessHtmlImageMarkdown({ markdown: withDurableBlocks })
-  const withImages = vaultPath ? resolveImageUrls(withHtmlImages, vaultPath, notePath) : withHtmlImages
-  return preProcessMathMarkdown({ markdown: withImages })
+  const withHtmlImages = preProcessHtmlImageMarkdown({ markdown: withBlankParagraphs })
+  const withBareImages = normalizeBareImageUrls(withHtmlImages)
+  const withImages = vaultPath ? resolveImageUrls(withBareImages, vaultPath, notePath) : withBareImages
+  const withMath = preProcessMathMarkdown({ markdown: withImages })
+  return preProcessSingleTildeStrikethrough({ markdown: withMath })
 }
 
 function injectEditorMarkdownBlocks(blocks: EditorBlocks): EditorBlocks {
   const withMath = injectMathInBlocks(blocks)
   const withHighlights = injectMarkdownHighlightsInBlocks(withMath)
-  return injectDurableEditorMarkdownBlocks(withHighlights) as EditorBlocks
+  const withDurableBlocks = injectDurableEditorMarkdownBlocks(withHighlights)
+  return injectBlankParagraphBlocks(withDurableBlocks) as EditorBlocks
 }
 
 function repairParsedMarkdownBlocks(parsed: MarkdownParseResult): EditorBlocks {

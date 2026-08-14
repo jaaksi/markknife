@@ -1,4 +1,21 @@
+import {
+  serializeBlockNoteMarkdown,
+  type DirectMarkdownCapableSerializer,
+} from './blockNoteDirectMarkdown'
+
 export const MARKDOWN_HIGHLIGHT_STYLE = 'highlight' as const
+export const MARKDOWN_HIGHLIGHT_COLOR_OPTIONS = [
+  { color: 'yellow', localeKey: 'editor.formatting.highlightYellow', markdownPrefix: '' },
+  { color: 'green', localeKey: 'editor.formatting.highlightGreen', markdownPrefix: '🟢' },
+  { color: 'red', localeKey: 'editor.formatting.highlightRed', markdownPrefix: '🔴' },
+  { color: 'blue', localeKey: 'editor.formatting.highlightBlue', markdownPrefix: '🔵' },
+  { color: 'purple', localeKey: 'editor.formatting.highlightPurple', markdownPrefix: '🟣' },
+] as const
+
+export type MarkdownHighlightColor = typeof MARKDOWN_HIGHLIGHT_COLOR_OPTIONS[number]['color']
+
+export const DEFAULT_MARKDOWN_HIGHLIGHT_COLOR = MARKDOWN_HIGHLIGHT_COLOR_OPTIONS[0].color
+export const MARKDOWN_HIGHLIGHT_COLORS = MARKDOWN_HIGHLIGHT_COLOR_OPTIONS.map(({ color }) => color)
 
 interface TextStyles {
   [style: string]: string | boolean | undefined
@@ -37,14 +54,16 @@ interface TableCellLike {
   [key: string]: unknown
 }
 
-interface MarkdownSerializer {
-  blocksToMarkdownLossy: (blocks: unknown[]) => string
-}
+type MarkdownSerializer = DirectMarkdownCapableSerializer
 
-type BlockContent = InlineItem[] | TableContentLike | unknown
+type BlockContent = unknown
 type TableCellValue = TableCellLike | string
 type InlineContentTransform = (content: InlineItem[]) => InlineItem[]
 type InlineSegment = { kind: 'delimiter' } | { kind: 'item'; item: InlineItem }
+type HighlightInjectionState = {
+  color: MarkdownHighlightColor | null
+  readsColorPrefix: boolean
+}
 
 function isTextItem(item: InlineItem): item is InlineItem & { text: string } {
   return item.type === 'text' && typeof item.text === 'string'
@@ -56,6 +75,43 @@ function isCodeTextItem(item: InlineItem): boolean {
 
 function textItemWithText(item: InlineItem, text: string): InlineItem {
   return { ...item, text }
+}
+
+export function markdownHighlightPrefix(color: MarkdownHighlightColor): string {
+  return markdownHighlightColorOption(color).markdownPrefix
+}
+
+export function markdownHighlightColorOption(color: MarkdownHighlightColor) {
+  return MARKDOWN_HIGHLIGHT_COLOR_OPTIONS.find(option => option.color === color)
+    ?? MARKDOWN_HIGHLIGHT_COLOR_OPTIONS[0]
+}
+
+export function readMarkdownHighlightPrefix(text: string): {
+  color: MarkdownHighlightColor
+  text: string
+} {
+  const option = MARKDOWN_HIGHLIGHT_COLOR_OPTIONS.find(candidate => (
+    candidate.markdownPrefix.length > 0 && text.startsWith(candidate.markdownPrefix)
+  ))
+  if (!option) return { color: DEFAULT_MARKDOWN_HIGHLIGHT_COLOR, text }
+
+  return {
+    color: option.color,
+    text: text.slice(option.markdownPrefix.length),
+  }
+}
+
+export function markdownHighlightColorFromStyles(styles: {
+  backgroundColor?: unknown
+  highlight?: unknown
+} | undefined): MarkdownHighlightColor | null {
+  if (styles?.highlight !== true) return null
+
+  const customColor = MARKDOWN_HIGHLIGHT_COLOR_OPTIONS.find(option => (
+    option.color !== DEFAULT_MARKDOWN_HIGHLIGHT_COLOR
+      && option.color === styles.backgroundColor
+  ))
+  return customColor?.color ?? DEFAULT_MARKDOWN_HIGHLIGHT_COLOR
 }
 
 function pushTextSegment(segments: InlineSegment[], item: InlineItem, text: string): void {
@@ -84,15 +140,56 @@ function delimiterCount(segments: InlineSegment[]): number {
   return segments.filter(segment => segment.kind === 'delimiter').length
 }
 
-function addHighlightStyle(item: InlineItem): InlineItem {
+function addHighlightStyle(item: InlineItem, color: MarkdownHighlightColor): InlineItem {
   if (!isTextItem(item)) return item
+  const styles = { ...(item.styles ?? {}) }
+  delete styles.backgroundColor
+
   return {
     ...item,
     styles: {
-      ...(item.styles ?? {}),
-      [MARKDOWN_HIGHLIGHT_STYLE]: true,
+      ...styles,
+      highlight: true,
+      ...(color === DEFAULT_MARKDOWN_HIGHLIGHT_COLOR ? {} : { backgroundColor: color }),
     },
   }
+}
+
+function toggleInjectedHighlight(state: HighlightInjectionState): InlineItem[] {
+  state.color = state.color === null ? DEFAULT_MARKDOWN_HIGHLIGHT_COLOR : null
+  state.readsColorPrefix = state.color !== null
+  return []
+}
+
+function consumeHighlightColorPrefix(
+  item: InlineItem,
+  state: HighlightInjectionState,
+): InlineItem {
+  if (state.color === null || !state.readsColorPrefix) return item
+
+  state.readsColorPrefix = false
+  if (!isTextItem(item)) return item
+
+  const prefixed = readMarkdownHighlightPrefix(item.text)
+  state.color = prefixed.color
+  return textItemWithText(item, prefixed.text)
+}
+
+function isEmptyTextItem(item: InlineItem): boolean {
+  return isTextItem(item) && item.text.length === 0
+}
+
+function injectHighlightSegment(
+  segment: InlineSegment,
+  state: HighlightInjectionState,
+): InlineItem[] {
+  if (segment.kind === 'delimiter') return toggleInjectedHighlight(state)
+
+  const item = consumeHighlightColorPrefix(segment.item, state)
+  state.readsColorPrefix = false
+  if (isEmptyTextItem(item)) return []
+
+  return [state.color === null ? item : addHighlightStyle(item, state.color)]
 }
 
 function injectMarkdownHighlights(content: InlineItem[]): InlineItem[] {
@@ -100,28 +197,26 @@ function injectMarkdownHighlights(content: InlineItem[]): InlineItem[] {
   const delimiters = delimiterCount(segments)
   if (delimiters === 0 || delimiters % 2 !== 0) return content
 
-  let highlighted = false
-  return segments.flatMap((segment) => {
-    if (segment.kind === 'delimiter') {
-      highlighted = !highlighted
-      return []
-    }
-    return [highlighted ? addHighlightStyle(segment.item) : segment.item]
-  })
+  const state: HighlightInjectionState = { color: null, readsColorPrefix: false }
+  return segments.flatMap(segment => injectHighlightSegment(segment, state))
 }
 
 function withoutHighlightStyle(styles: TextStyles | undefined): TextStyles {
   const rest = { ...(styles ?? {}) }
-  delete rest[MARKDOWN_HIGHLIGHT_STYLE]
+  const color = markdownHighlightColorFromStyles(rest)
+  delete rest.highlight
+  if (color !== DEFAULT_MARKDOWN_HIGHLIGHT_COLOR && rest.backgroundColor === color) {
+    delete rest.backgroundColor
+  }
   return rest
 }
 
 function isHighlightedTextItem(item: InlineItem): boolean {
-  return isTextItem(item) && item.styles?.[MARKDOWN_HIGHLIGHT_STYLE] === true
+  return isTextItem(item) && item.styles?.highlight === true
 }
 
-function highlightMarker(): InlineItem {
-  return { type: 'text', text: '==', styles: {} }
+function highlightMarker(prefix = ''): InlineItem {
+  return { type: 'text', text: `==${prefix}`, styles: {} }
 }
 
 function restoreHighlightedTextItem(item: InlineItem): InlineItem {
@@ -131,25 +226,47 @@ function restoreHighlightedTextItem(item: InlineItem): InlineItem {
   }
 }
 
+function appendRestoredHighlightedItem(
+  restored: InlineItem[],
+  item: InlineItem,
+  activeColor: MarkdownHighlightColor | null,
+): MarkdownHighlightColor {
+  const color = markdownHighlightColorFromStyles(item.styles) ?? DEFAULT_MARKDOWN_HIGHLIGHT_COLOR
+  if (activeColor !== color) {
+    if (activeColor !== null) restored.push(highlightMarker())
+    restored.push(highlightMarker(markdownHighlightPrefix(color)))
+  }
+  restored.push(restoreHighlightedTextItem(item))
+  return color
+}
+
+function appendRestoredPlainItem(
+  restored: InlineItem[],
+  item: InlineItem,
+  activeColor: MarkdownHighlightColor | null,
+): void {
+  if (activeColor !== null) restored.push(highlightMarker())
+  restored.push(item)
+}
+
 function restoreMarkdownHighlights(content: InlineItem[]): InlineItem[] {
   const restored: InlineItem[] = []
-  let openHighlight = false
+  let activeColor: MarkdownHighlightColor | null = null
+  let changed = false
 
   for (const item of content) {
     if (isHighlightedTextItem(item)) {
-      if (!openHighlight) restored.push(highlightMarker())
-      restored.push(restoreHighlightedTextItem(item))
-      openHighlight = true
+      activeColor = appendRestoredHighlightedItem(restored, item, activeColor)
+      changed = true
       continue
     }
 
-    if (openHighlight) restored.push(highlightMarker())
-    restored.push(item)
-    openHighlight = false
+    appendRestoredPlainItem(restored, item, activeColor)
+    activeColor = null
   }
 
-  if (openHighlight) restored.push(highlightMarker())
-  return restored
+  if (activeColor !== null) restored.push(highlightMarker())
+  return changed ? restored : content
 }
 
 function isTableContent(content: BlockContent): content is TableContentLike {
@@ -164,20 +281,29 @@ function isTableContent(content: BlockContent): content is TableContentLike {
 
 function transformTableCell(cell: TableCellValue, transform: InlineContentTransform): TableCellValue {
   if (typeof cell === 'string' || !Array.isArray(cell.content)) return cell
-  return { ...cell, content: transform(cell.content) }
+  const content = transform(cell.content)
+  return content === cell.content ? cell : { ...cell, content }
 }
 
 function transformTableContent(
   content: TableContentLike,
   transform: InlineContentTransform,
 ): TableContentLike {
+  const rows = content.rows?.map((row) => transformTableRow(row, transform))
+  if (!rows || !content.rows || rows.every((row, index) => row === content.rows?.at(index))) return content
   return {
     ...content,
-    rows: content.rows?.map(row => ({
-      ...row,
-      cells: row.cells?.map(cell => transformTableCell(cell, transform)),
-    })),
+    rows,
   }
+}
+
+function transformTableRow(
+  row: TableRowLike,
+  transform: InlineContentTransform,
+): TableRowLike {
+  const cells = row.cells?.map((cell) => transformTableCell(cell, transform))
+  if (!cells || !row.cells || cells.every((cell, index) => cell === row.cells?.at(index))) return row
+  return { ...row, cells }
 }
 
 function transformBlockContent(
@@ -189,12 +315,25 @@ function transformBlockContent(
   return content
 }
 
+function shouldTransformBlockContent(block: BlockLike): boolean {
+  return block.type !== 'codeBlock'
+}
+
 function transformBlock(block: BlockLike, transform: InlineContentTransform): BlockLike {
-  const content = transformBlockContent(block.content, transform)
-  const children = Array.isArray(block.children)
-    ? block.children.map(child => transformBlock(child, transform))
-    : block.children
-  return { ...block, content, children }
+  const content = shouldTransformBlockContent(block)
+    ? transformBlockContent(block.content, transform)
+    : block.content
+  const children = transformChildBlocks(block.children, child => transformBlock(child, transform))
+  return content === block.content && children === block.children ? block : { ...block, content, children }
+}
+
+function transformChildBlocks(
+  children: BlockLike[] | undefined,
+  transform: (block: BlockLike) => BlockLike,
+): BlockLike[] | undefined {
+  if (!Array.isArray(children)) return children
+  const nextChildren = children.map(transform)
+  return nextChildren.some((child, index) => child !== children.at(index)) ? nextChildren : children
 }
 
 export function injectMarkdownHighlightsInBlocks(blocks: unknown[]): unknown[] {
@@ -209,5 +348,5 @@ export function serializeMarkdownHighlightAwareBlocks(
   editor: MarkdownSerializer,
   blocks: unknown[],
 ): string {
-  return editor.blocksToMarkdownLossy(restoreMarkdownHighlightsInBlocks(blocks)).trimEnd()
+  return serializeBlockNoteMarkdown(editor, restoreMarkdownHighlightsInBlocks(blocks)).trimEnd()
 }

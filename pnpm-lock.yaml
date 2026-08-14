@@ -165,6 +165,9 @@ importers:
       '@tauri-apps/cli':
         specifier: ^2.10.0
         version: 2.10.0
+      '@tiptap/pm':
+        specifier: 3.19.0
+        version: 3.19.0
       '@types/mdast':
         specifier: ^4.0.4
         version: 4.0.4

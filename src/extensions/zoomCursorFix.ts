@@ -1,19 +1,10 @@
-import { EditorView, ViewPlugin } from '@codemirror/view'
-
-function parseZoomValue(source: string | undefined): number | null {
-  const value = source?.trim() ?? ''
-  if (!value || value === 'normal') return null
-
-  let parsed = parseFloat(value)
-  if (value.endsWith('%')) parsed /= 100
-  return parsed > 0 && Number.isFinite(parsed) ? parsed : null
-}
+import { type EditorView, ViewPlugin } from '@codemirror/view'
 
 /**
  * Read the current CSS zoom factor from document.documentElement.
  * Returns 1 when no zoom is applied or the value is unparseable.
  */
-function getDocumentZoom(): number {
+export function getDocumentZoom(): number {
   const computedZoom = parseZoomValue(getComputedStyle(document.documentElement).zoom)
   if (computedZoom !== null) return computedZoom
 
@@ -31,7 +22,7 @@ function getDocumentZoom(): number {
  * Range.getClientRects() (used by CodeMirror's posAtCoords) may return
  * values in CSS space. Dividing by zoom aligns them.
  */
-function adjustCoordsForZoom(
+export function adjustCoordsForZoom(
   coords: { x: number; y: number },
   zoom: number,
 ): { x: number; y: number } {
@@ -153,4 +144,13 @@ export function zoomCursorFix() {
       },
     }
   })
+}
+
+function parseZoomValue(source: string | undefined): number | null {
+  const value = source?.trim() ?? ''
+  if (!value || value === 'normal') return null
+
+  let parsed = parseFloat(value)
+  if (value.endsWith('%')) parsed /= 100
+  return parsed > 0 && Number.isFinite(parsed) ? parsed : null
 }

@@ -1,12 +1,12 @@
 import { createExtension } from '@blocknote/core'
-import type { useCreateBlockNote } from '@blocknote/react'
+import type { EditorView } from '@tiptap/pm/view'
 import {
   isRecoverableEditorTransformError,
   reportRecoveredEditorTransformError,
   richEditorTransformRecoveryErrorReason,
 } from './richEditorTransformErrorRecoveryExtension'
 
-export type RichEditorInputView = NonNullable<ReturnType<typeof useCreateBlockNote>['prosemirrorView']>
+export type RichEditorInputView = EditorView
 export type RichEditorInputTransaction = Parameters<RichEditorInputView['dispatch']>[0]
 
 export interface RichEditorInputTransformContext {
@@ -44,18 +44,25 @@ const RECOVERED_INPUT_TRANSFORM_ERROR = Symbol('recoveredInputTransformError')
 type TransformReadResult = RichEditorInputTransformResult | null | typeof RECOVERED_INPUT_TRANSFORM_ERROR
 
 function resetInputTransforms(transforms: RichEditorInputTransform[]): void {
-  transforms.forEach((transform) => transform.reset?.())
+  transforms.forEach((transform) => {
+    transform.reset?.()
+  })
 }
 
 function isLiveEditorView(view: RichEditorInputView): boolean {
   if (view.isDestroyed) return false
-  if (view.dom?.isConnected === false) return false
+  const dom = Reflect.get(view, 'dom') as unknown
+  if (typeof dom === 'object' && dom !== null && Reflect.get(dom, 'isConnected') === false) return false
 
   return true
 }
 
 function isComposingInput(event: InputEvent, view: RichEditorInputView): boolean {
-  return event.isComposing || Boolean(view.composing)
+  const inputType = typeof event.inputType === 'string' ? event.inputType : ''
+
+  return event.isComposing
+    || inputType.toLowerCase().includes('composition')
+    || Boolean(view.composing)
 }
 
 export function recoverRichEditorInputTransformError(error: unknown): boolean {
@@ -170,7 +177,7 @@ export function createRichEditorInputTransformExtension({
   key,
 }: RichEditorInputTransformExtensionOptions) {
   return createExtension(({ editor }) => {
-    const readView = () => editor._tiptapEditor?.view ?? editor.prosemirrorView
+    const readView = (): RichEditorInputView => editor._tiptapEditor.view
     const transforms = createTransforms()
 
     return {

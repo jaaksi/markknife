@@ -66,6 +66,8 @@ interface SerializeDurableBlocksOptions {
   serializeOrdinaryBlocks: (blocks: unknown[]) => string
 }
 
+const MARKDOWN_ACTIVE_URI_CHARACTERS = /[!'()*_~]/gu
+
 export function lineEnding({ line }: MarkdownLine): string {
   if (line.endsWith('\r\n')) return '\r\n'
   return line.endsWith('\n') ? '\n' : ''
@@ -82,7 +84,10 @@ function splitMarkdownLines(markdown: string): string[] {
 }
 
 function encodePayload(payload: unknown): string {
-  return encodeURIComponent(JSON.stringify(payload))
+  return encodeURIComponent(JSON.stringify(payload)).replace(
+    MARKDOWN_ACTIVE_URI_CHARACTERS,
+    character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  )
 }
 
 function decodePayload(codec: DurableBlockCodec, encoded: string): unknown | null {
@@ -97,10 +102,23 @@ function durableToken(codec: DurableBlockCodec, payload: unknown): string {
   return `${codec.tokenPrefix}${encodePayload(payload)}${codec.tokenSuffix}`
 }
 
+function readDurableTokenPrefix(codec: DurableBlockCodec, text: string): string | null {
+  if (text.startsWith(codec.tokenPrefix)) return codec.tokenPrefix
+
+  const emphasisStrippedPrefix = codec.tokenPrefix.replaceAll('_', '')
+  if (emphasisStrippedPrefix !== codec.tokenPrefix && text.startsWith(emphasisStrippedPrefix)) {
+    return emphasisStrippedPrefix
+  }
+  return null
+}
+
 function readDurableToken(codec: DurableBlockCodec, text: string): unknown | null {
   const trimmed = text.trim()
-  if (!trimmed.startsWith(codec.tokenPrefix) || !trimmed.endsWith(codec.tokenSuffix)) return null
-  return decodePayload(codec, trimmed.slice(codec.tokenPrefix.length, -codec.tokenSuffix.length))
+  if (!trimmed.endsWith(codec.tokenSuffix)) return null
+
+  const prefix = readDurableTokenPrefix(codec, trimmed)
+  if (prefix === null) return null
+  return decodePayload(codec, trimmed.slice(prefix.length, -codec.tokenSuffix.length))
 }
 
 function readFenceOpening(line: string, codec: DurableBlockCodec): FenceOpening | null {
@@ -183,14 +201,19 @@ export function preProcessDurableMarkdownBlocks({
   return result.join('')
 }
 
-function readSingleTextContent(content: InlineItem[] | undefined): string | null {
-  const onlyItem = content?.length === 1 ? content[0] : null
-  if (onlyItem?.type !== 'text' || typeof onlyItem.text !== 'string') return null
-  return onlyItem.text
+function readTextOnlyContent(content: InlineItem[] | undefined): string | null {
+  if (!Array.isArray(content) || content.length === 0) return null
+
+  let text = ''
+  for (const item of content) {
+    if (item.type !== 'text' || typeof item.text !== 'string') return null
+    text += item.text
+  }
+  return text
 }
 
 function readTokenPayload(block: BlockLike, codecs: readonly DurableBlockCodec[]): { codec: DurableBlockCodec; payload: unknown } | null {
-  const text = readSingleTextContent(block.content)
+  const text = readTextOnlyContent(block.content)
   if (text === null) return null
 
   for (const codec of codecs) {

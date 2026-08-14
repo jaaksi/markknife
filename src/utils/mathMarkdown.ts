@@ -1,4 +1,8 @@
 import katex from 'katex'
+import {
+  serializeBlockNoteMarkdown,
+  type DirectMarkdownCapableSerializer,
+} from './blockNoteDirectMarkdown'
 
 export const MATH_INLINE_TYPE = 'mathInline'
 export const MATH_BLOCK_TYPE = 'mathBlock'
@@ -46,9 +50,7 @@ interface TableCellLike {
 type TableCellValue = TableCellLike | string
 type InlineContentTransform = (content: InlineItem[]) => InlineItem[]
 
-interface MarkdownSerializer {
-  blocksToMarkdownLossy: (blocks: unknown[]) => string
-}
+type MarkdownSerializer = DirectMarkdownCapableSerializer
 
 interface LatexPayload {
   latex: string
@@ -70,6 +72,10 @@ interface TokenReadRequest {
 interface TextPosition {
   text: string
   index: number
+}
+
+interface LeadingAmount {
+  end: number
 }
 
 interface InlineMathMatch extends LatexPayload {
@@ -98,10 +104,18 @@ interface MathRenderRequest extends LatexPayload {
 }
 
 function encodeLatex({ latex }: LatexPayload): string {
-  return encodeURIComponent(latex)
+  return Array.from(latex, (char) => char.codePointAt(0)?.toString(16) ?? '').join('-')
 }
 
 function decodeLatex({ encoded }: EncodedPayload): string {
+  if (/^[0-9a-f-]+$/iu.test(encoded)) {
+    try {
+      return encoded.split('-').map((part) => String.fromCodePoint(Number.parseInt(part, 16))).join('')
+    } catch {
+      return encoded
+    }
+  }
+
   try {
     return decodeURIComponent(encoded)
   } catch {
@@ -152,6 +166,67 @@ function isValidInlineLatex({ latex }: LatexPayload): boolean {
   return Boolean(latex.trim())
     && !/^\s|\s$/.test(latex)
     && !looksLikeFinancialProse({ latex })
+    && looksLikeIntentionalMath({ latex })
+}
+
+function looksLikeIntentionalMath({ latex }: LatexPayload): boolean {
+  const trimmed = latex.trim()
+  if (isSimpleVariable(trimmed)) return true
+  if (startsWithLikelyCurrencyAmount(trimmed)) return false
+  if (hasCoefficientVariableSyntax(trimmed)) return true
+  if (!hasMathSyntax(trimmed)) return false
+  if (hasLatexCommand(trimmed)) return true
+  return !hasPlainProseWord(trimmed)
+}
+
+function isSimpleVariable(text: string): boolean {
+  return /^[A-Za-z](?:['’])?$/u.test(text)
+}
+
+function hasLatexCommand(text: string): boolean {
+  return /\\[A-Za-z]+/u.test(text)
+}
+
+function hasMathSyntax(text: string): boolean {
+  return hasLatexCommand(text)
+    || /[-+*/=<>^_{}~]/u.test(text)
+}
+
+function hasPlainProseWord(text: string): boolean {
+  const withoutCommands = text.replace(/\\[A-Za-z]+/gu, '')
+  return /[A-Za-z]{3,}/u.test(withoutCommands)
+}
+
+function startsWithLikelyCurrencyAmount(text: string): boolean {
+  const amount = readLeadingAmount(text)
+  return amount !== null && (
+    amountBoundaryLooksLikeCurrency({ text, amount })
+    || amountSpanLacksMathIntent(text)
+  )
+}
+
+function readLeadingAmount(text: string): LeadingAmount | null {
+  const match = /^[\d,]+(?:\.\d+)?(?:[KMBT%])?/iu.exec(text)
+  if (!match) return null
+  return { end: match[0].length }
+}
+
+function amountBoundaryLooksLikeCurrency({ text, amount }: { text: string; amount: LeadingAmount }): boolean {
+  const nextChar = text.charAt(amount.end)
+  if (!nextChar) return true
+  return (nextChar === '/' && isAsciiLetter(text.charAt(amount.end + 1)))
+    || nextChar === ','
+    || nextChar === ')'
+    || /\s/u.test(nextChar)
+}
+
+function amountSpanLacksMathIntent(text: string): boolean {
+  if (hasCoefficientVariableSyntax(text)) return false
+  return !hasMathSyntax(text) || hasPlainProseWord(text)
+}
+
+function hasCoefficientVariableSyntax(text: string): boolean {
+  return /^[\d,]+(?:\.\d+)?[A-Za-z]{1,2}\d?(?:[_^][A-Za-z0-9{}]+)?$/u.test(text)
 }
 
 function looksLikeFinancialProse({ latex }: LatexPayload): boolean {
@@ -215,6 +290,7 @@ function readInlineMath({ text, index }: TextPosition): InlineMathMatch | null {
 
   const end = findInlineMathEnd({ text, index })
   if (end === -1) return null
+  if (isAsciiLetter(text.charAt(end + 1)) || isAsciiDigit(text.charAt(end + 1))) return null
 
   const latex = text.slice(index + 1, end)
   return isValidInlineLatex({ latex }) ? { latex, end } : null
@@ -351,10 +427,13 @@ function inlineMathPartToItem({ source, part, index }: { source: InlineItem; par
 }
 
 function restoreInlineMath(content: InlineItem[]): InlineItem[] {
-  return content.map((item) => {
+  let changed = false
+  const restored = content.map((item) => {
     if (item.type !== MATH_INLINE_TYPE || !item.props?.latex) return item
+    changed = true
     return { type: 'text', text: `$${item.props.latex}$` }
   })
+  return changed ? restored : content
 }
 
 function isTableContent(content: BlockContent): content is TableContentLike {
@@ -369,19 +448,31 @@ function isTableContent(content: BlockContent): content is TableContentLike {
 
 function transformTableCell(cell: TableCellValue, transform: InlineContentTransform): TableCellValue {
   if (typeof cell === 'string' || !Array.isArray(cell.content)) return cell
-  return { ...cell, content: transform(cell.content) }
+  const content = transform(cell.content)
+  return content === cell.content ? cell : { ...cell, content }
 }
 
 function transformTableContent(
   content: TableContentLike,
   transform: InlineContentTransform,
 ): TableContentLike {
+  let changed = false
+  const rows = content.rows?.map((row) => {
+    let rowChanged = false
+    const cells = row.cells?.map((cell) => {
+      const nextCell = transformTableCell(cell, transform)
+      if (nextCell !== cell) rowChanged = true
+      return nextCell
+    })
+    if (!rowChanged) return row
+    changed = true
+    return { ...row, cells }
+  })
+
+  if (!changed) return content
   return {
     ...content,
-    rows: content.rows?.map((row) => ({
-      ...row,
-      cells: row.cells?.map((cell) => transformTableCell(cell, transform)),
-    })),
+    rows,
   }
 }
 
@@ -396,14 +487,14 @@ function transformBlockContent(
 
 function injectMathInBlock(block: BlockLike): BlockLike {
   const content = transformBlockContent(block.content, expandInlineMath)
-  const children = Array.isArray(block.children) ? block.children.map(injectMathInBlock) : block.children
+  const children = transformChildBlocks(block.children, injectMathInBlock)
   const latex = Array.isArray(content) ? readDisplayMathToken(content) : null
 
   if (latex !== null) {
     return buildMathBlock({ block, latex })
   }
 
-  return { ...block, content, children }
+  return content === block.content && children === block.children ? block : { ...block, content, children }
 }
 
 function readDisplayMathToken(content: InlineItem[] | undefined): string | null {
@@ -424,8 +515,22 @@ function buildMathBlock({ block, latex }: { block: BlockLike } & LatexPayload): 
 
 function restoreInlineMathInBlock(block: BlockLike): BlockLike {
   const content = transformBlockContent(block.content, restoreInlineMath)
-  const children = Array.isArray(block.children) ? block.children.map(restoreInlineMathInBlock) : block.children
-  return { ...block, content, children }
+  const children = transformChildBlocks(block.children, restoreInlineMathInBlock)
+  return content === block.content && children === block.children ? block : { ...block, content, children }
+}
+
+function transformChildBlocks(
+  children: BlockLike[] | undefined,
+  transform: (block: BlockLike) => BlockLike,
+): BlockLike[] | undefined {
+  if (!Array.isArray(children)) return children
+  let changed = false
+  const nextChildren = children.map((child) => {
+    const nextChild = transform(child)
+    if (nextChild !== child) changed = true
+    return nextChild
+  })
+  return changed ? nextChildren : children
 }
 
 function isMathBlock(block: BlockLike): boolean {
@@ -440,7 +545,7 @@ export function injectMathInBlocks(blocks: unknown[]): unknown[] {
   return (blocks as BlockLike[]).map(injectMathInBlock)
 }
 
-function restoreMathInBlocks(blocks: unknown[]): unknown[] {
+export function restoreMathInBlocks(blocks: unknown[]): unknown[] {
   return (blocks as BlockLike[]).map(restoreInlineMathInBlock)
 }
 
@@ -450,7 +555,7 @@ export function serializeMathAwareBlocks(editor: MarkdownSerializer, blocks: unk
 
   const flushPending = () => {
     if (pending.length === 0) return
-    const markdown = editor.blocksToMarkdownLossy(restoreMathInBlocks(pending)).trimEnd()
+    const markdown = serializeBlockNoteMarkdown(editor, restoreMathInBlocks(pending)).trimEnd()
     if (markdown) chunks.push(markdown)
     pending = []
   }

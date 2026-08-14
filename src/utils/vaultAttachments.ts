@@ -11,6 +11,8 @@ const ASSET_URL_PREFIXES = [
 ]
 const ATTACHMENTS_SEGMENT = '/attachments/'
 const RELATIVE_ATTACHMENTS_PREFIX = 'attachments/'
+const DOT_RELATIVE_ATTACHMENTS_PREFIX = `./${RELATIVE_ATTACHMENTS_PREFIX}`
+const ROOT_RELATIVE_ATTACHMENTS_PREFIX = `/${RELATIVE_ATTACHMENTS_PREFIX}`
 const WINDOWS_EXTENDED_PATH_PREFIX = '\\\\?\\'
 const WINDOWS_EXTENDED_UNC_PREFIX = '\\\\?\\UNC\\'
 const WINDOWS_DRIVE_PATH_PATTERN = /^[A-Za-z]:[\\/]/
@@ -61,9 +63,15 @@ function relativePathForVault({
   attachmentPath,
   vaultPath,
 }: AttachmentPathRequest & VaultPathRequest): AttachmentPath {
+  const normalizedAttachmentPath = normalizePortableAttachmentPath(attachmentPath)
   return usesWindowsSeparators({ path: vaultPath })
-    ? attachmentPath.replace(/\//g, '\\')
-    : attachmentPath.replace(/\\/g, '/')
+    ? normalizedAttachmentPath.replace(/\//g, '\\')
+    : normalizedAttachmentPath.replace(/\\/g, '/')
+}
+
+function normalizePortableAttachmentPath(path: AttachmentPath): AttachmentPath {
+  if (path.startsWith(DOT_RELATIVE_ATTACHMENTS_PREFIX)) return path.slice(2)
+  return path.startsWith(ROOT_RELATIVE_ATTACHMENTS_PREFIX) ? path.slice(1) : path
 }
 
 function removeWindowsExtendedPrefix(path: AbsolutePath): AbsolutePath {
@@ -151,14 +159,14 @@ function resolveRelativeAttachmentPath({
   url,
   vaultPath,
 }: UrlRequest & VaultPathRequest): AbsolutePath | null {
-  if (!url.startsWith(RELATIVE_ATTACHMENTS_PREFIX)) return null
+  if (!isPortableAttachmentPath({ path: url })) return null
 
-  const attachmentPath = safeDecode(url)
+  const attachmentPath = normalizePortableAttachmentPath(safeDecode(url))
   if (hasUnsafeRelativeSegment({ path: attachmentPath })) return null
   return vaultAttachmentPath({ vaultPath, attachmentPath })
 }
 
-function vaultAttachmentPath({
+export function vaultAttachmentPath({
   attachmentPath,
   vaultPath,
 }: AttachmentPathRequest & VaultPathRequest): AbsolutePath {
@@ -183,6 +191,8 @@ export function vaultAttachmentAssetUrl({
 
 export function isPortableAttachmentPath({ path }: PathRequest): boolean {
   return path.startsWith(RELATIVE_ATTACHMENTS_PREFIX)
+    || path.startsWith(DOT_RELATIVE_ATTACHMENTS_PREFIX)
+    || path.startsWith(ROOT_RELATIVE_ATTACHMENTS_PREFIX)
 }
 
 export function isTauriAssetUrl({ url }: UrlRequest): boolean {

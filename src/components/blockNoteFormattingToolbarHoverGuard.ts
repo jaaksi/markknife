@@ -17,6 +17,8 @@ const FORMATTING_TOOLBAR_FILE_BLOCK_TYPES = new Set([
   'video',
 ])
 
+type FormattingToolbarEditor = BlockNoteEditor<BlockSchema, InlineContentSchema, StyleSchema>
+
 function isVisibleRect(rect: RectLike) {
   return rect.right > rect.left && rect.bottom > rect.top
 }
@@ -43,7 +45,7 @@ function getSelectedFileBlockBridgeElement(
   )
 }
 
-function isWithinFormattingToolbarHoverBridge(
+export function isWithinFormattingToolbarHoverBridge(
   point: { x: number; y: number },
   fileBlockRect: RectLike,
   toolbarRect: RectLike,
@@ -65,7 +67,7 @@ function isWithinFormattingToolbarHoverBridge(
   )
 }
 
-function shouldSuppressFormattingToolbarHoverUpdate({
+export function shouldSuppressFormattingToolbarHoverUpdate({
   eventTarget,
   point,
   container,
@@ -102,25 +104,24 @@ function shouldSuppressFormattingToolbarHoverUpdate({
   )
 }
 
-function getActiveFormattingToolbarFileBlockId(
-  editor: BlockNoteEditor<BlockSchema, InlineContentSchema, StyleSchema>,
-) {
-  let selectedBlock: ReturnType<typeof editor.getTextCursorPosition>['block'] | null = null
-
+function selectedFormattingToolbarBlock(editor: FormattingToolbarEditor) {
   try {
-    selectedBlock = editor.getSelection()?.blocks[0] ?? null
+    return editor.getSelection()?.blocks[0] ?? null
   } catch {
-    selectedBlock = null
+    return null
   }
+}
 
-  if (!selectedBlock) {
-    try {
-      selectedBlock = editor.getTextCursorPosition().block
-    } catch {
-      selectedBlock = null
-    }
+function cursorFormattingToolbarBlock(editor: FormattingToolbarEditor) {
+  try {
+    return editor.getTextCursorPosition().block
+  } catch {
+    return null
   }
+}
 
+function getActiveFormattingToolbarFileBlockId(editor: FormattingToolbarEditor) {
+  const selectedBlock = selectedFormattingToolbarBlock(editor) ?? cursorFormattingToolbarBlock(editor)
   if (!selectedBlock) return null
 
   return FORMATTING_TOOLBAR_FILE_BLOCK_TYPES.has(selectedBlock.type)

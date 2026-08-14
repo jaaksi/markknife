@@ -579,6 +579,10 @@
   font-size: var(--table-font-size);
 }
 
+.editor__blocknote-container [data-content-type="table"] :is(th, td) {
+  border-color: var(--table-border-color);
+}
+
 .editor__blocknote-container [data-content-type="table"] th {
   /* 用项目自有变量,避免与 BlockNote 运行时注入到 .bn-container 的同名 --table-header-background 撞名被遮蔽;
      无阅读样式覆盖时回退到 BlockNote 默认值(白)。 */
@@ -588,8 +592,12 @@
 
 .editor__blocknote-container [data-content-type="table"] td {
   padding: var(--table-cell-padding-vertical) var(--table-cell-padding-horizontal);
-  border-color: var(--table-border-color);
   text-align: start;
+}
+
+/* 选中单元格的遮罩内缩 1px,别把表格网格线盖掉 */
+.editor__blocknote-container [data-content-type="table"] .selectedCell::after {
+  inset: 1px;
 }
 
 /* --- Horizontal rule --- */
