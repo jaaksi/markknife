@@ -1,3 +1,4 @@
+pub mod app_menu;
 pub mod app_updater;
 mod commands;
 #[cfg(any(test, all(desktop, target_os = "linux")))]
@@ -95,12 +96,15 @@ fn setup_desktop_plugins(app: &mut tauri::App) -> Result<(), Box<dyn std::error:
     app.handle().plugin(tauri_plugin_process::init())?;
     app.handle().plugin(tauri_plugin_opener::init())?;
     if should_use_native_desktop_menu(std::env::consts::OS) {
-        // 改用 Tauri 默认菜单(标准 App/编辑/窗口项)。不再安装旧 Tolaria 菜单——
-        // 后者残留大量失效菜单项,且其 ⌘S(保存)等自定义加速键会在 webview 之前
-        // 截获按键(且多处于禁用态),导致前端快捷键失效。默认菜单无 Save 项,
-        // Cmd+S 等会正常落到 webview 的键盘处理。
-        let default_menu = tauri::menu::Menu::default(app.handle())?;
-        app.set_menu(default_menu)?;
+        // 自建菜单栏(结构等同 Tauri 默认菜单,外加「历史记录」,且文案可跟随应用语言)。
+        // 不再安装旧 Tolaria 菜单——后者残留大量失效菜单项,且其 ⌘S(保存)等自定义加速键会在
+        // webview 之前截获按键(且多处于禁用态),导致前端快捷键失效。这里只用标准项自带的
+        // 系统加速键,不加自定义加速键,⌘S / ⌘O 等仍会正常落到 webview 的键盘处理。
+        app_menu::install(app)?;
+        // 「历史记录」菜单的点击回传(菜单项由前端推送后填充,见 app_menu)。
+        app.handle().on_menu_event(|app_handle, event| {
+            app_menu::handle_menu_event(app_handle, event.id().as_ref());
+        });
     }
     setup_custom_window_chrome(app)?;
     window_state::restore_main_window_state(app);
@@ -291,7 +295,8 @@ macro_rules! app_invoke_handler {
             commands::detach_tab_to_window,
             commands::take_detached_open_path,
             commands::reveal_path_in_dir,
-            commands::rename_markdown_file
+            commands::rename_markdown_file,
+            commands::sync_app_menu
         ]
     };
 }

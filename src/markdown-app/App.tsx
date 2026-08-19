@@ -32,6 +32,7 @@ import { Input } from '../components/ui/input'
 import { writeClipboardText } from '../utils/clipboardText'
 import { StartPage } from './StartPage'
 import { useRecentFiles } from './useRecentFiles'
+import { useAppMenu } from './useAppMenu'
 import {
   basenameOf,
   createMarkdownFile,
@@ -381,6 +382,9 @@ function MarkdownAppInner() {
 
   // 系统「打开方式 / 双击」传入的文件（冷启动领取 + 运行时事件）。
   useOpenWithFile(loadPath)
+
+  // 原生菜单栏(仅 macOS):同步文案与历史列表 + 接收「打开该文件」/「清除历史记录」。
+  useAppMenu({ recents: recentFiles.recents, onOpenPath: loadPath, onClear: recentFiles.clear })
 
   // 编辑某标签内容 → 更新该标签并标记未保存。
   const handleTabChange = useCallback((path: string, content: string) => {

@@ -164,6 +164,16 @@ pub fn trigger_menu_command(_app_handle: tauri::AppHandle, _id: String) -> Resul
     Err("Native menu commands are not available on mobile".into())
 }
 
+/// 同步整条菜单栏:前端在界面语言 / 最近打开列表变化时,把全部文案与历史列表整份推过来。
+/// 非 macOS 没有原生菜单栏,app_menu::apply 内部会直接跳过。
+#[tauri::command]
+pub fn sync_app_menu(
+    app_handle: tauri::AppHandle,
+    payload: crate::app_menu::AppMenuPayload,
+) -> Result<(), String> {
+    crate::app_menu::apply(&app_handle, &payload)
+}
+
 #[cfg(desktop)]
 fn should_apply_window_min_size_constraints(
     is_windows: bool,
