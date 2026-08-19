@@ -1,6 +1,6 @@
 [package]
 name = "markknife"
-version = "0.1.1"
+version = "0.1.2"
 description = "Personal knowledge and life management app"
 authors = ["jaaksi <jaaksi@163.com>"]
 license = "AGPL-3.0-or-later"

@@ -266,7 +266,9 @@ function useEditorChangeHandler(options: {
       tabs: tabsRef.current,
       cache: tabCacheRef.current,
     })
-    if (!previousContent) return
+    // 空字符串是合法的基准内容(新建文件初始即为 ''),只有真正取不到(undefined)时才跳过,
+    // 否则新文件的首次输入会被当成「无上一次内容」而丢弃,切模式后内容消失。
+    if (previousContent === undefined) return
 
     const next = serializedEditorChange({
       editor,
