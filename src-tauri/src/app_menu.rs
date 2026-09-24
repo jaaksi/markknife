@@ -407,7 +407,8 @@ pub fn handle_menu_event(app_handle: &AppHandle, id: &str) -> bool {
 /// 裸 listen 注册的是 EventTarget::Any,而 Tauri 的 match_any_or_filter 对 Any 监听器直接
 /// 短路放行、根本不跑目标过滤(event/listener.rs),那样定向就又退化成广播了。
 ///
-/// 没有聚焦窗口(如全部最小化)时退回广播,至少不把事件丢掉。
+/// 没有聚焦窗口时(全部最小化,或 macOS 下主窗口被「关闭 = 隐藏」收起来了)先把主窗口唤回来,
+/// 再定向投给它;连主窗口都不存在才退回广播,至少不把事件丢掉。
 #[cfg(desktop)]
 fn emit_open_to_focused_window(app_handle: &AppHandle, path: &str) {
     let focused = app_handle
@@ -416,7 +417,9 @@ fn emit_open_to_focused_window(app_handle: &AppHandle, path: &str) {
         .find(|(_, window)| window.is_focused().unwrap_or(false))
         .map(|(label, _)| label);
 
-    let _ = match focused {
+    let target = focused.or_else(|| crate::window_lifecycle::revive_main_window(app_handle));
+
+    let _ = match target {
         Some(label) => app_handle.emit_to(label, OPEN_RECENT_EVENT, path.to_string()),
         None => app_handle.emit(OPEN_RECENT_EVENT, path.to_string()),
     };

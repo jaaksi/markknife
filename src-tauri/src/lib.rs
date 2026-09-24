@@ -9,6 +9,8 @@ pub mod settings;
 pub mod vault;
 pub mod vault_list;
 #[cfg(desktop)]
+mod window_lifecycle;
+#[cfg(desktop)]
 mod window_state;
 
 use std::ffi::OsStr;
@@ -54,21 +56,10 @@ fn setup_common_plugins(app: &mut tauri::App) -> Result<(), Box<dyn std::error::
 }
 
 #[cfg(desktop)]
-fn focus_main_window(app_handle: &tauri::AppHandle) {
-    use tauri::Manager;
-
-    if let Some(window) = app_handle.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
-}
-
-#[cfg(desktop)]
 fn with_desktop_entry_plugins(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
     builder
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            focus_main_window(app);
+            window_lifecycle::show_main_window(app);
         }))
         .plugin(tauri_plugin_deep_link::init())
 }
@@ -316,12 +307,15 @@ fn record_opened_path(app_handle: &tauri::AppHandle, path: String) {
             *guard = Some(path.clone());
         }
     }
+    // 主窗口可能只是被隐藏(macOS 下点关闭不退出),先唤回来再投事件,否则文件会开在看不见的窗口里。
+    window_lifecycle::show_main_window(app_handle);
     let _ = app_handle.emit("open-file", path);
 }
 
 #[cfg(desktop)]
 fn handle_run_event(app_handle: &tauri::AppHandle, event: &tauri::RunEvent) {
     window_state::handle_run_event(app_handle, event);
+    window_lifecycle::handle_run_event(app_handle, event);
 
     // `RunEvent::Opened` 仅 macOS 存在(Finder 双击 / 「打开方式」);
     // Windows/Linux 走 capture_cli_open_file 解析启动参数,不经过这里。
