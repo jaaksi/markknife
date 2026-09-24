@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Toolbar, type AppMode } from './Toolbar'
 import type { TabContextActions } from './TabBar'
 import { MarkdownReadonlyView } from './MarkdownReadonlyView'
 import { MarkdownEditableView } from './MarkdownEditableView'
-import { SplitView, type SplitOrientation } from './SplitView'
+import type { SplitOrientation } from './SplitView'
 import { SettingsDialog } from './SettingsDialog'
 import { UpdateBanner } from './UpdateBanner'
 import { useAppUpdate } from './useAppUpdate'
@@ -44,6 +44,12 @@ import {
 
 /** 内容变更后多久自动落盘。 */
 const AUTOSAVE_DEBOUNCE_MS = 800
+/** 启动后多久在后台预取分栏模式代码(首屏不需要,预取后首次切分栏不用等加载)。 */
+const SPLIT_VIEW_PREFETCH_DELAY_MS = 3000
+
+// 分栏模式(含 CodeMirror 整套源码编辑器)体积大、首屏用不到,拆出主包按需加载,缩短冷启动。
+const loadSplitView = () => import('./SplitView')
+const SplitView = lazy(() => loadSplitView().then((module) => ({ default: module.SplitView })))
 
 /** 一个打开的标签:路径 + 文件名 + 内存内容 + 未保存标记。 */
 interface OpenTab {
@@ -381,7 +387,7 @@ function MarkdownAppInner() {
   }, [])
 
   // 系统「打开方式 / 双击」传入的文件（冷启动领取 + 运行时事件）。
-  useOpenWithFile(loadPath)
+  const coldStartSettled = useOpenWithFile(loadPath)
 
   // 原生菜单栏(仅 macOS):同步文案与历史列表 + 接收「打开该文件」/「清除历史记录」。
   useAppMenu({ recents: recentFiles.recents, onOpenPath: loadPath, onClear: recentFiles.clear })
@@ -513,6 +519,14 @@ function MarkdownAppInner() {
     return () => clearTimeout(handle)
   }, [checkAppUpdate])
 
+  // 启动稳定后在后台预取分栏模式代码,避免首次切到分栏时现加载。
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      void loadSplitView().catch((error) => console.error('[markdown-app] 预取分栏模式失败:', error))
+    }, SPLIT_VIEW_PREFETCH_DELAY_MS)
+    return () => clearTimeout(handle)
+  }, [])
+
   // 拆出窗口在领取文件前显示加载态(而非起始页)。兜底:若超时仍没领到文件(异常),回退到起始页,
   // 不让加载态卡死。
   const [detachedLoadTimedOut, setDetachedLoadTimedOut] = useState(false)
@@ -600,6 +614,9 @@ function MarkdownAppInner() {
               aria-label={t('app.loading')}
             />
           </div>
+        ) : !coldStartSettled ? (
+          // 冷启动领取待打开文件期间留空(通常几十毫秒):双击 .md 启动时直接进文档,不先闪起始页。
+          <div className="flex-1" />
         ) : (
           <StartPage
             recents={recentFiles.recents}
@@ -735,15 +752,17 @@ function MarkdownWorkspace({
   }
   if (mode === 'split') {
     return (
-      <SplitView
-        key={activePath}
-        markdown={markdown}
-        filePath={filePath}
-        vaultPath={vaultPath}
-        orientation={splitOrientation}
-        onChange={onActiveChange}
-        onSave={onSave}
-      />
+      <Suspense fallback={<div className="flex-1" />}>
+        <SplitView
+          key={activePath}
+          markdown={markdown}
+          filePath={filePath}
+          vaultPath={vaultPath}
+          orientation={splitOrientation}
+          onChange={onActiveChange}
+          onSave={onSave}
+        />
+      </Suspense>
     )
   }
   return (
