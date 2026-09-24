@@ -33,6 +33,8 @@ export function useMarkdownBlockNoteEditor(vaultPath?: string) {
   const editor = useCreateBlockNote({
     schema,
     domAttributes: RICH_EDITOR_BIDI_DOM_ATTRIBUTES,
+    // markdown 表格必须有表头行,开启后侧边菜单才会出现「表头行 / 表头列」开关
+    settings: { tables: { headers: true } },
     uploadFile: (file: File) => uploadImageFile(file, vaultPathRef.current),
     _tiptapOptions: { injectNonce: RUNTIME_STYLE_NONCE },
     extensions: [

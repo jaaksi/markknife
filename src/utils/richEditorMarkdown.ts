@@ -33,11 +33,52 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+/**
+ * markdown 表格语法必须有表头行。BlockNote 允许表格没有表头行(如斜杠菜单插入的新表格),
+ * 这种表格交给导出器会凭空补出一行空表头,内容整体下移一行——存一次盘、重开文件后
+ * 用户写在第一行的内容就跑到正文里去了。
+ * 这里在序列化前把「没有表头行的表格」的第一行当作表头,保证往返不移位。
+ */
+function withTableHeaderRows(blocks: unknown[]): unknown[] {
+  let changed = false
+  const nextBlocks = blocks.map(block => {
+    const nextBlock = withTableHeaderRow(block)
+    if (nextBlock !== block) changed = true
+    return nextBlock
+  })
+  return changed ? nextBlocks : blocks
+}
+
+function withTableHeaderRow(block: unknown): unknown {
+  if (!isRecord(block)) return block
+
+  const children = Array.isArray(block.children) ? withTableHeaderRows(block.children) : undefined
+  const childrenChanged = children !== undefined && children !== block.children
+  const content = tableContentNeedingHeaderRow(block)
+
+  if (content) {
+    const nextContent = { ...content, headerRows: 1 }
+    return childrenChanged
+      ? { ...block, content: nextContent, children }
+      : { ...block, content: nextContent }
+  }
+
+  return childrenChanged ? { ...block, children } : block
+}
+
+function tableContentNeedingHeaderRow(block: Record<string, unknown>): Record<string, unknown> | null {
+  if (block.type !== 'table' || !isRecord(block.content)) return null
+
+  const content = block.content
+  if (content.type !== 'tableContent' || !Array.isArray(content.rows) || content.rows.length === 0) return null
+  return content.headerRows ? null : content
+}
+
 export function serializeRichEditorBodyToMarkdown(
   editor: ReturnType<typeof useCreateBlockNote>,
   vaultPath?: string,
 ): string {
-  const serialized = serializeDurableEditorBlocks(editor, editor.document, vaultPath)
+  const serialized = serializeDurableEditorBlocks(editor, withTableHeaderRows(editor.document), vaultPath)
   return compactMarkdown(
     restoreBlankBlockquoteParagraphs(serialized),
     { preserveConsecutiveBlankLines: true },
