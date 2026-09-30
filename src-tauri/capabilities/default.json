@@ -16,6 +16,7 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
     "core:window:allow-destroy",
+    "core:window:allow-hide",
     "core:window:allow-set-title",
     "core:webview:allow-create-webview-window",
     "core:event:default",

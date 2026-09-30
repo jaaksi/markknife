@@ -30,6 +30,7 @@ import {
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { writeClipboardText } from '../utils/clipboardText'
+import { isMac } from '../utils/platform'
 import { StartPage } from './StartPage'
 import { useRecentFiles } from './useRecentFiles'
 import { useAppMenu } from './useAppMenu'
@@ -136,6 +137,8 @@ function MarkdownAppInner() {
   // 当前窗口句柄与「已确认关闭」标志(确认后再次 close 直接放行,避免再弹框)。
   const windowRef = useRef<{ close: () => Promise<void> } | null>(null)
   const closeConfirmedRef = useRef(false)
+  // 关掉最后一个标签触发的关窗:窗口藏起来之后再清空标签(先清会在隐藏前闪一下起始页)。
+  const clearTabsAfterHideRef = useRef(false)
 
   // 保存指定标签(默认当前标签)。
   const doSave = useCallback(
@@ -241,10 +244,12 @@ function MarkdownAppInner() {
       }
       // 关闭最后一个标签:直接关闭当前窗口(而非回到起始页)。内容已落盘,置「已确认」标志绕过
       // 窗口的未保存拦截(setTabs 异步、tabsRef 滞后,否则会误判仍有未保存而弹确认框)。
+      // macOS 主窗口关闭只是隐藏,要在隐藏后清空标签,否则重新打开时这个标签又回来了。
       // 非 Tauri(浏览器 mock)无窗口句柄时退回起始页。
       if (cur.length === 1) {
         if (windowRef.current) {
           closeConfirmedRef.current = true
+          clearTabsAfterHideRef.current = true
           await windowRef.current.close()
         } else {
           setTabs([])
@@ -369,18 +374,27 @@ function MarkdownAppInner() {
 
   // 关闭确认框:保存全部未保存后关 / 不保存直接关(置确认标志后 close 会被放行)。
   const confirmSaveAndClose = useCallback(async () => {
+    const saved = new Set<string>()
     for (const tab of tabsRef.current.filter((x) => x.dirty)) {
       try {
         await writeMarkdownFile(tab.path, tab.content)
+        saved.add(tab.path)
       } catch (error) {
         console.error('[markdown-app] 关闭前保存失败:', error)
       }
     }
+    // macOS 主窗口关闭只是隐藏、标签会保留,存好的标签要清掉未保存标记。
+    setTabs((prev) => prev.map((x) => (saved.has(x.path) ? { ...x, dirty: false } : x)))
     closeConfirmedRef.current = true
     setCloseDialogOpen(false)
     await windowRef.current?.close()
   }, [])
   const confirmDiscardAndClose = useCallback(async () => {
+    // macOS 主窗口关闭只是隐藏、标签会保留:未保存的标签必须关掉,否则改动留在内存里,
+    // 随后被自动保存写回磁盘,「不保存」就失效了。
+    const remaining = tabsRef.current.filter((x) => !x.dirty)
+    setTabs(remaining)
+    setActivePath((cur) => (remaining.some((x) => x.path === cur) ? cur : (remaining[0]?.path ?? null)))
     closeConfirmedRef.current = true
     setCloseDialogOpen(false)
     await windowRef.current?.close()
@@ -486,7 +500,9 @@ function MarkdownAppInner() {
     return () => clearTimeout(handle)
   }, [saveFeedback])
 
-  // 关闭窗口:任一标签有未保存改动则拦截并弹「是否保存」确认框;无改动直接放行(非 Tauri 无此事件)。
+  // 关闭窗口:任一标签有未保存改动则拦截并弹「是否保存」确认框;无改动 / 已确认则放行(非 Tauri 无此事件)。
+  // 放行时 macOS 主窗口只隐藏不销毁,应用常驻 Dock,重新打开时标签原样恢复(见 window_lifecycle.rs);
+  // 拆出窗口与其他平台照常销毁。注意:处理函数不 preventDefault,Tauri 就会直接 destroy 窗口。
   useEffect(() => {
     if (!isTauri()) return
     let active = true
@@ -494,11 +510,28 @@ function MarkdownAppInner() {
     void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
       const win = getCurrentWindow()
       windowRef.current = win
+      const hideInsteadOfClose = isMac() && win.label === 'main'
       return win
-        .onCloseRequested((event) => {
-          if (closeConfirmedRef.current || !tabsRef.current.some((tab) => tab.dirty)) return // 已确认 / 无改动:放行
+        .onCloseRequested(async (event) => {
+          if (!closeConfirmedRef.current && tabsRef.current.some((tab) => tab.dirty)) {
+            event.preventDefault()
+            setCloseDialogOpen(true)
+            return
+          }
+          // 窗口保留时要复位,否则下次关闭会跳过未保存检查。
+          closeConfirmedRef.current = false
+          if (!hideInsteadOfClose) return
           event.preventDefault()
-          setCloseDialogOpen(true)
+          try {
+            await win.hide()
+          } catch (error) {
+            console.error('[markdown-app] 隐藏窗口失败:', error)
+          }
+          if (clearTabsAfterHideRef.current) {
+            clearTabsAfterHideRef.current = false
+            setTabs([])
+            setActivePath(null)
+          }
         })
         .then((fn) => {
           if (active) unlisten = fn
