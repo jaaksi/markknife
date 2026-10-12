@@ -205,6 +205,9 @@ const zhCN = {
   'app.close.discard': '不保存',
   'app.close.save': '保存',
   'app.close.descMultiple': '有 {count} 个文件未保存,关闭前要全部保存吗?',
+  'app.close.saving': '正在保存…',
+  'app.close.saveFailed': '未关闭文件。以下文件保存失败，请重试：\n{details}',
+  'app.close.contentChanged': '保存期间以下文件有新的修改，已取消关闭，请重试：\n{files}',
 
   // —— 目录面板 ——
   'toc.title': '目录',
@@ -455,6 +458,9 @@ const en: Record<MessageKey, string> = {
   'app.close.discard': 'Don’t save',
   'app.close.save': 'Save',
   'app.close.descMultiple': '{count} files have unsaved changes. Save all before closing?',
+  'app.close.saving': 'Saving…',
+  'app.close.saveFailed': 'Files remain open. Could not save the following files. Please retry:\n{details}',
+  'app.close.contentChanged': 'Closing was canceled because these files changed while saving. Please retry:\n{files}',
 
   // —— Outline panel ——
   'toc.title': 'Outline',

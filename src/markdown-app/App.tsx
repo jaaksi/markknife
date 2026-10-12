@@ -34,6 +34,7 @@ import { isMac } from '../utils/platform'
 import { StartPage } from './StartPage'
 import { useRecentFiles } from './useRecentFiles'
 import { useAppMenu } from './useAppMenu'
+import { markSavedTabs, saveTabsBeforeClose } from './tabSaving'
 import {
   basenameOf,
   createMarkdownFile,
@@ -73,6 +74,13 @@ function MarkdownAppInner() {
   const [saveFeedback, setSaveFeedback] = useState<{ kind: 'saved' | 'error'; text: string } | null>(null)
   // 有未保存改动时关闭窗口的「是否保存」确认弹窗。
   const [closeDialogOpen, setCloseDialogOpen] = useState(false)
+  const [closeSaveError, setCloseSaveError] = useState<string | null>(null)
+  const [isSavingBeforeClose, setIsSavingBeforeClose] = useState(false)
+  const savingBeforeCloseRef = useRef(false)
+  const flushEditorRef = useRef<(() => void) | null>(null)
+  const registerEditorFlush = useCallback((flush: (() => void) | null) => {
+    flushEditorRef.current = flush
+  }, [])
   // 重命名弹窗:目标文件路径(null 表示未打开)+ 输入中的新文件名。
   const [renameTarget, setRenameTarget] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -127,9 +135,12 @@ function MarkdownAppInner() {
 
   // 保存 / 关闭闭包通过 ref 读取最新标签与当前路径,避免陈旧闭包。
   const tabsRef = useRef(tabs)
-  useEffect(() => {
-    tabsRef.current = tabs
-  }, [tabs])
+  // 同步更新 ref，关闭前 flush 编辑器时立即读到最新内容，无需等待 React 提交。
+  const updateTabs = useCallback((update: OpenTab[] | ((prev: OpenTab[]) => OpenTab[])) => {
+    const next = typeof update === 'function' ? update(tabsRef.current) : update
+    tabsRef.current = next
+    setTabs(next)
+  }, [])
   const activePathRef = useRef(activePath)
   useEffect(() => {
     activePathRef.current = activePath
@@ -143,6 +154,8 @@ function MarkdownAppInner() {
   // 保存指定标签(默认当前标签)。
   const doSave = useCallback(
     async (targetPath?: string) => {
+      if (savingBeforeCloseRef.current) return
+      flushEditorRef.current?.()
       const path = targetPath ?? activePathRef.current
       const tab = path ? tabsRef.current.find((t) => t.path === path) : undefined
       if (!tab) {
@@ -151,7 +164,7 @@ function MarkdownAppInner() {
       }
       try {
         await writeMarkdownFile(tab.path, tab.content)
-        setTabs((prev) => prev.map((x) => (x.path === tab.path ? { ...x, dirty: false } : x)))
+        updateTabs((prev) => markSavedTabs(prev, [tab]))
         setSaveFeedback({ kind: 'saved', text: t('app.toast.saved') })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -159,13 +172,57 @@ function MarkdownAppInner() {
         setSaveFeedback({ kind: 'error', text: t('app.toast.saveFailed', { message }) })
       }
     },
-    [t],
+    [t, updateTabs],
   )
+
+  const withSavedTabsBeforeClose = useCallback(async (
+    shouldClose: (tab: OpenTab) => boolean,
+    onSaved: () => void | Promise<void>,
+    inDialog = false,
+  ) => {
+    if (savingBeforeCloseRef.current) return
+    savingBeforeCloseRef.current = true
+    setIsSavingBeforeClose(true)
+    if (inDialog) setCloseSaveError(null)
+    try {
+      const result = await saveTabsBeforeClose({
+        readTabs: () => tabsRef.current,
+        updateTabs,
+        shouldClose,
+        flushEditor: () => { flushEditorRef.current?.() },
+        write: writeMarkdownFile,
+      })
+      if (!result.canClose) {
+        const message = result.failures.length > 0
+          ? t('app.close.saveFailed', {
+            details: result.failures.map(({ path, message }) => `${basenameOf(path)}: ${message}`).join('\n'),
+          })
+          : t('app.close.contentChanged', { files: result.pendingPaths.map(basenameOf).join('\n') })
+        if (inDialog) setCloseSaveError(message)
+        else setSaveFeedback({ kind: 'error', text: message })
+        return
+      }
+      await onSaved()
+    } catch (error) {
+      closeConfirmedRef.current = false
+      clearTabsAfterHideRef.current = false
+      const message = t('app.toast.saveFailed', {
+        message: error instanceof Error ? error.message : String(error),
+      })
+      if (inDialog) {
+        setCloseDialogOpen(true)
+        setCloseSaveError(message)
+      } else setSaveFeedback({ kind: 'error', text: message })
+    } finally {
+      savingBeforeCloseRef.current = false
+      setIsSavingBeforeClose(false)
+    }
+  }, [t, updateTabs])
 
   // 在标签里打开一份内容:已打开则只激活(不重复、不覆盖正在编辑的内容),否则新增标签。
   const openInTab = useCallback(
     (path: string, content: string) => {
-      setTabs((prev) =>
+      updateTabs((prev) =>
         prev.some((tab) => tab.path === path)
           ? prev
           : [...prev, { path, name: basenameOf(path), content, dirty: false }],
@@ -175,7 +232,7 @@ function MarkdownAppInner() {
       setMode('wysiwyg')
       recordRecent(path, basenameOf(path))
     },
-    [recordRecent],
+    [recordRecent, updateTabs],
   )
 
   // 载入指定路径(系统打开方式、双击、历史记录均复用此入口)。
@@ -225,45 +282,33 @@ function MarkdownAppInner() {
   }, [openInTab])
 
   // 关闭标签:有未保存改动先落盘(自动保存下通常已存),落盘失败则保留标签并报错;
-  // 关的是当前标签时切到右邻、否则左邻;关掉最后一个回起始页。
+  // 关的是当前标签时切到右邻、否则左邻;关掉最后一个时关闭窗口。
   const closeTab = useCallback(
     async (path: string) => {
-      const cur = tabsRef.current
-      const idx = cur.findIndex((tab) => tab.path === path)
-      if (idx < 0) return
-      const tab = cur[idx]
-      if (tab.dirty) {
-        try {
-          await writeMarkdownFile(tab.path, tab.content)
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          console.error('[markdown-app] 关闭前保存失败:', error)
-          setSaveFeedback({ kind: 'error', text: t('app.toast.saveFailed', { message }) })
+      await withSavedTabsBeforeClose((tab) => tab.path === path, async () => {
+        const cur = tabsRef.current
+        const idx = cur.findIndex((tab) => tab.path === path)
+        if (idx < 0) return
+        // 主窗口隐藏后再清空最后一个标签，避免闪起始页。
+        if (cur.length === 1) {
+          if (windowRef.current) {
+            closeConfirmedRef.current = true
+            clearTabsAfterHideRef.current = true
+            await windowRef.current.close()
+          } else {
+            updateTabs([])
+            setActivePath(null)
+          }
           return
         }
-      }
-      // 关闭最后一个标签:直接关闭当前窗口(而非回到起始页)。内容已落盘,置「已确认」标志绕过
-      // 窗口的未保存拦截(setTabs 异步、tabsRef 滞后,否则会误判仍有未保存而弹确认框)。
-      // macOS 主窗口关闭只是隐藏,要在隐藏后清空标签,否则重新打开时这个标签又回来了。
-      // 非 Tauri(浏览器 mock)无窗口句柄时退回起始页。
-      if (cur.length === 1) {
-        if (windowRef.current) {
-          closeConfirmedRef.current = true
-          clearTabsAfterHideRef.current = true
-          await windowRef.current.close()
-        } else {
-          setTabs([])
-          setActivePath(null)
+        updateTabs((prev) => prev.filter((tab) => tab.path !== path))
+        if (activePathRef.current === path) {
+          const fallback = cur[idx + 1] ?? cur[idx - 1] ?? null
+          setActivePath(fallback ? fallback.path : null)
         }
-        return
-      }
-      setTabs((prev) => prev.filter((x) => x.path !== path))
-      if (activePathRef.current === path) {
-        const fallback = cur[idx + 1] ?? cur[idx - 1] ?? null
-        setActivePath(fallback ? fallback.path : null)
-      }
+      })
     },
-    [t],
+    [updateTabs, withSavedTabsBeforeClose],
   )
 
   // 切到上一个 / 下一个标签(环形)。
@@ -279,11 +324,13 @@ function MarkdownAppInner() {
   // 右键菜单「在新窗口打开」:先静默落盘(确保新窗口读到最新内容),再拆为独立新窗口并从本窗口移走该标签。
   const handleOpenInNewWindow = useCallback(
     async (path: string) => {
+      if (savingBeforeCloseRef.current) return
+      flushEditorRef.current?.()
       const tab = tabsRef.current.find((x) => x.path === path)
       if (tab?.dirty) {
         try {
           await writeMarkdownFile(tab.path, tab.content)
-          setTabs((prev) => prev.map((x) => (x.path === path ? { ...x, dirty: false } : x)))
+          updateTabs((prev) => markSavedTabs(prev, [tab]))
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           console.error('[markdown-app] 拆出前保存失败:', error)
@@ -298,7 +345,7 @@ function MarkdownAppInner() {
         console.error('[markdown-app] 在新窗口打开失败:', error)
       }
     },
-    [closeTab, t],
+    [closeTab, t, updateTabs],
   )
 
   // 右键菜单「在访达中显示」。
@@ -321,33 +368,35 @@ function MarkdownAppInner() {
     [t],
   )
 
-  // 右键菜单「关闭其他」:其余标签先落盘未保存内容,只保留当前标签并激活它。
+  // 关闭其他:全部保存成功才移除目标标签，保存失败或期间有新修改则全部保留。
   const handleCloseOthers = useCallback(async (keepPath: string) => {
-    for (const tab of tabsRef.current.filter((x) => x.path !== keepPath && x.dirty)) {
-      try {
-        await writeMarkdownFile(tab.path, tab.content)
-      } catch (error) {
-        console.error('[markdown-app] 关闭其他前保存失败:', error)
-      }
-    }
-    setTabs((prev) => prev.filter((x) => x.path === keepPath))
-    setActivePath(keepPath)
-  }, [])
+    if (savingBeforeCloseRef.current) return
+    flushEditorRef.current?.()
+    if (!tabsRef.current.some((tab) => tab.path === keepPath)) return
+    const targetPaths = new Set(tabsRef.current.filter((tab) => tab.path !== keepPath).map((tab) => tab.path))
+    await withSavedTabsBeforeClose((tab) => targetPaths.has(tab.path), () => {
+      // 保存期间新打开的标签不属于本次关闭目标。
+      updateTabs((prev) => prev.filter((tab) => !targetPaths.has(tab.path)))
+      setActivePath(keepPath)
+    })
+  }, [updateTabs, withSavedTabsBeforeClose])
 
   // 右键菜单「重命名」:打开弹窗,预填当前文件名。
   const handleRename = useCallback((path: string) => {
+    if (savingBeforeCloseRef.current) return
     setRenameTarget(path)
     setRenameValue(basenameOf(path))
   }, [])
 
   // 提交重命名:后端改名后,更新标签 path/name、激活态与最近记录。
   const submitRename = useCallback(async () => {
+    if (savingBeforeCloseRef.current) return
     const target = renameTarget
     const name = renameValue.trim()
     if (!target || !name) return
     try {
       const newPath = await invokeCommand<string>('rename_markdown_file', { oldPath: target, newName: name })
-      setTabs((prev) =>
+      updateTabs((prev) =>
         prev.map((x) => (x.path === target ? { ...x, path: newPath, name: basenameOf(newPath) } : x)),
       )
       setActivePath((cur) => (cur === target ? newPath : cur))
@@ -358,7 +407,7 @@ function MarkdownAppInner() {
       console.error('[markdown-app] 重命名失败:', error)
       setSaveFeedback({ kind: 'error', text: t('tab.rename.failed', { message }) })
     }
-  }, [renameTarget, renameValue, recordRecent, t])
+  }, [renameTarget, renameValue, recordRecent, t, updateTabs])
 
   // 标签右键菜单的动作集合(透传给 Toolbar → TabBar)。
   const tabActions = useMemo<TabContextActions>(
@@ -374,31 +423,24 @@ function MarkdownAppInner() {
 
   // 关闭确认框:保存全部未保存后关 / 不保存直接关(置确认标志后 close 会被放行)。
   const confirmSaveAndClose = useCallback(async () => {
-    const saved = new Set<string>()
-    for (const tab of tabsRef.current.filter((x) => x.dirty)) {
-      try {
-        await writeMarkdownFile(tab.path, tab.content)
-        saved.add(tab.path)
-      } catch (error) {
-        console.error('[markdown-app] 关闭前保存失败:', error)
-      }
-    }
-    // macOS 主窗口关闭只是隐藏、标签会保留,存好的标签要清掉未保存标记。
-    setTabs((prev) => prev.map((x) => (saved.has(x.path) ? { ...x, dirty: false } : x)))
-    closeConfirmedRef.current = true
-    setCloseDialogOpen(false)
-    await windowRef.current?.close()
-  }, [])
+    await withSavedTabsBeforeClose(() => true, async () => {
+      closeConfirmedRef.current = true
+      setCloseDialogOpen(false)
+      await windowRef.current?.close()
+    }, true)
+  }, [withSavedTabsBeforeClose])
   const confirmDiscardAndClose = useCallback(async () => {
+    if (savingBeforeCloseRef.current) return
+    flushEditorRef.current?.()
     // macOS 主窗口关闭只是隐藏、标签会保留:未保存的标签必须关掉,否则改动留在内存里,
     // 随后被自动保存写回磁盘,「不保存」就失效了。
     const remaining = tabsRef.current.filter((x) => !x.dirty)
-    setTabs(remaining)
+    updateTabs(remaining)
     setActivePath((cur) => (remaining.some((x) => x.path === cur) ? cur : (remaining[0]?.path ?? null)))
     closeConfirmedRef.current = true
     setCloseDialogOpen(false)
     await windowRef.current?.close()
-  }, [])
+  }, [updateTabs])
 
   // 系统「打开方式 / 双击」传入的文件（冷启动领取 + 运行时事件）。
   const coldStartSettled = useOpenWithFile(loadPath)
@@ -408,22 +450,23 @@ function MarkdownAppInner() {
 
   // 编辑某标签内容 → 更新该标签并标记未保存。
   const handleTabChange = useCallback((path: string, content: string) => {
-    setTabs((prev) =>
+    updateTabs((prev) =>
       prev.map((tab) =>
         tab.path === path ? (tab.content === content ? tab : { ...tab, content, dirty: true }) : tab,
       ),
     )
-  }, [])
+  }, [updateTabs])
 
   // 防抖自动保存:对所有未保存标签落盘(后台标签改过也能存)。
   useEffect(() => {
+    if (isSavingBeforeClose) return
     const dirtyTabs = tabs.filter((tab) => tab.dirty)
     if (dirtyTabs.length === 0) return
     const handle = setTimeout(() => {
       dirtyTabs.forEach((tab) => void doSave(tab.path))
     }, AUTOSAVE_DEBOUNCE_MS)
     return () => clearTimeout(handle)
-  }, [tabs, doSave])
+  }, [tabs, doSave, isSavingBeforeClose])
 
   // 全局快捷键:可在设置里自定义的动作走 comboLookup 分发;Cmd/Ctrl+, 打开设置为固定键。
   useEffect(() => {
@@ -513,8 +556,16 @@ function MarkdownAppInner() {
       const hideInsteadOfClose = isMac() && win.label === 'main'
       return win
         .onCloseRequested(async (event) => {
-          if (!closeConfirmedRef.current && tabsRef.current.some((tab) => tab.dirty)) {
+          if (savingBeforeCloseRef.current && !closeConfirmedRef.current) {
             event.preventDefault()
+            return
+          }
+          flushEditorRef.current?.()
+          if (tabsRef.current.some((tab) => tab.dirty)) {
+            event.preventDefault()
+            closeConfirmedRef.current = false
+            clearTabsAfterHideRef.current = false
+            setCloseSaveError(null)
             setCloseDialogOpen(true)
             return
           }
@@ -529,7 +580,7 @@ function MarkdownAppInner() {
           }
           if (clearTabsAfterHideRef.current) {
             clearTabsAfterHideRef.current = false
-            setTabs([])
+            updateTabs([])
             setActivePath(null)
           }
         })
@@ -542,7 +593,7 @@ function MarkdownAppInner() {
       active = false
       unlisten?.()
     }
-  }, [])
+  }, [updateTabs])
 
   // 启动后延迟做一次静默更新检查；发现新版会弹出更新提示框（非 Tauri 环境为空操作）。
   useEffect(() => {
@@ -622,6 +673,7 @@ function MarkdownAppInner() {
               onTabChange={handleTabChange}
               onActiveChange={(content) => handleTabChange(filePath, content)}
               onSave={() => void doSave()}
+              onRegisterFlush={registerEditorFlush}
             />
             {tocPrefs.position === 'right' && tocPanel}
             {showToc && tocCollapsed && (
@@ -668,7 +720,7 @@ function MarkdownAppInner() {
         <div
           role="status"
           className={`fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full px-4 py-2 text-[13px] font-medium shadow-lg ${
-            saveFeedback.kind === 'saved' ? 'bg-foreground text-background' : 'bg-destructive text-white'
+            saveFeedback.kind === 'saved' ? 'bg-foreground text-background' : 'max-w-[calc(100vw-3rem)] whitespace-pre-wrap bg-destructive text-white'
           }`}
         >
           {saveFeedback.kind === 'saved' ? `✓ ${saveFeedback.text}` : saveFeedback.text}
@@ -676,18 +728,32 @@ function MarkdownAppInner() {
       )}
 
       {/* 未保存改动时关闭窗口的确认弹窗 */}
-      <Dialog open={closeDialogOpen} onOpenChange={setCloseDialogOpen}>
+      <Dialog open={closeDialogOpen} onOpenChange={(open) => {
+        if (savingBeforeCloseRef.current) return
+        setCloseDialogOpen(open)
+        if (!open) setCloseSaveError(null)
+      }}>
         <DialogContent className="sm:max-w-sm">
           <DialogTitle>{t('app.close.title')}</DialogTitle>
           <DialogDescription>{closeDescription}</DialogDescription>
+          {closeSaveError && (
+            <p role="alert" className="whitespace-pre-wrap break-words text-sm text-destructive">
+              {closeSaveError}
+            </p>
+          )}
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button variant="ghost" onClick={() => setCloseDialogOpen(false)}>
+            <Button variant="ghost" disabled={isSavingBeforeClose} onClick={() => {
+              setCloseDialogOpen(false)
+              setCloseSaveError(null)
+            }}>
               {t('app.close.cancel')}
             </Button>
-            <Button variant="outline" onClick={() => void confirmDiscardAndClose()}>
+            <Button variant="outline" disabled={isSavingBeforeClose} onClick={() => void confirmDiscardAndClose()}>
               {t('app.close.discard')}
             </Button>
-            <Button onClick={() => void confirmSaveAndClose()}>{t('app.close.save')}</Button>
+            <Button disabled={isSavingBeforeClose} onClick={() => void confirmSaveAndClose()}>
+              {t(isSavingBeforeClose ? 'app.close.saving' : 'app.close.save')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -768,6 +834,7 @@ function MarkdownWorkspace({
   onTabChange,
   onActiveChange,
   onSave,
+  onRegisterFlush,
 }: {
   mode: AppMode
   tabs: ReadonlyArray<{ path: string; content: string }>
@@ -779,6 +846,7 @@ function MarkdownWorkspace({
   onTabChange: (path: string, content: string) => void
   onActiveChange: (content: string) => void
   onSave: () => void
+  onRegisterFlush: (flush: (() => void) | null) => void
 }) {
   if (mode === 'view') {
     return <MarkdownReadonlyView key={activePath} markdown={markdown} filePath={filePath} vaultPath={vaultPath} />
@@ -799,6 +867,6 @@ function MarkdownWorkspace({
     )
   }
   return (
-    <MarkdownEditableView tabs={tabs} activePath={activePath} vaultPath={vaultPath} onChange={onTabChange} />
+    <MarkdownEditableView tabs={tabs} activePath={activePath} vaultPath={vaultPath} onChange={onTabChange} onRegisterFlush={onRegisterFlush} />
   )
 }

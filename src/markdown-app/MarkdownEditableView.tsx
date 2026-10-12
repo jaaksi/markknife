@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { SingleEditorView } from '../components/SingleEditorView'
 import { useEditorTabSwap } from '../hooks/useEditorTabSwap'
 import { useMarkdownBlockNoteEditor } from './useMarkdownBlockNoteEditor'
@@ -18,11 +18,13 @@ export function MarkdownEditableView({
   activePath,
   vaultPath,
   onChange,
+  onRegisterFlush,
 }: {
   tabs: ReadonlyArray<{ path: string; content: string }>
   activePath: string
   vaultPath?: string
   onChange: (path: string, content: string) => void
+  onRegisterFlush: (flush: (() => void) | null) => void
 }) {
   const editor = useMarkdownBlockNoteEditor(vaultPath)
   const swapTabs = useMemo(
@@ -30,7 +32,7 @@ export function MarkdownEditableView({
     [tabs],
   )
 
-  const { handleEditorChange } = useEditorTabSwap({
+  const { handleEditorChange, flushPendingEditorChange } = useEditorTabSwap({
     tabs: swapTabs,
     activeTabPath: activePath,
     editor,
@@ -38,6 +40,11 @@ export function MarkdownEditableView({
     rawMode: false,
     vaultPath,
   })
+
+  useEffect(() => {
+    onRegisterFlush(flushPendingEditorChange)
+    return () => onRegisterFlush(null)
+  }, [flushPendingEditorChange, onRegisterFlush])
 
   return (
     <RichEditorSurface>

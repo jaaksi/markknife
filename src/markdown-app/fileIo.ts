@@ -2,6 +2,7 @@ import { open, save } from '@tauri-apps/plugin-dialog'
 import { isTauri } from '../mock-tauri'
 import { invokeCommand } from './invokeCommand'
 import { t } from './i18nMessages'
+import { createMarkdownWriteQueue } from './tabSaving'
 
 export interface OpenedFile {
   path: string
@@ -27,9 +28,9 @@ export function readMarkdownFile(path: string): Promise<string> {
   return invokeCommand<string>('read_markdown_file', { path })
 }
 
-export function writeMarkdownFile(path: string, content: string): Promise<void> {
-  return invokeCommand<void>('write_markdown_file', { path, content })
-}
+export const writeMarkdownFile = createMarkdownWriteQueue((path, content) =>
+  invokeCommand<void>('write_markdown_file', { path, content }),
+)
 
 /** 弹出系统文件选择框并读取选中的 Markdown 文件。取消则返回 null。 */
 export async function openMarkdownFile(): Promise<OpenedFile | null> {
