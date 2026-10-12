@@ -2,7 +2,6 @@ import { open, save } from '@tauri-apps/plugin-dialog'
 import { isTauri } from '../mock-tauri'
 import { invokeCommand } from './invokeCommand'
 import { t } from './i18nMessages'
-import { createMarkdownWriteQueue } from './tabSaving'
 
 export interface OpenedFile {
   path: string
@@ -28,9 +27,25 @@ export function readMarkdownFile(path: string): Promise<string> {
   return invokeCommand<string>('read_markdown_file', { path })
 }
 
-export const writeMarkdownFile = createMarkdownWriteQueue((path, content) =>
-  invokeCommand<void>('write_markdown_file', { path, content }),
-)
+export function readMarkdownFileState(path: string): Promise<string | null> {
+  return invokeCommand<string | null>('read_markdown_file_state', { path })
+}
+
+export function writeMarkdownFile(path: string, content: string, expectedContent: string | null): Promise<void> {
+  return invokeCommand<void>('write_markdown_file', { path, content, expectedContent })
+}
+
+/** 另存为由系统对话框确认目标，随后也校验目标版本，避免对话框关闭后又被修改。 */
+export async function saveMarkdownCopy(name: string, content: string, sourcePath: string): Promise<OpenedFile | null> {
+  const target = isTauri()
+    ? await save({ defaultPath: name, filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }] })
+    : `mock-vault/${Date.now()}-${name}`
+  if (typeof target !== 'string') return null
+  if (target === sourcePath) throw new Error(t('fileChange.copySamePath'))
+  const expected = await readMarkdownFileState(target)
+  await writeMarkdownFile(target, content, expected)
+  return { path: target, content }
+}
 
 /** 弹出系统文件选择框并读取选中的 Markdown 文件。取消则返回 null。 */
 export async function openMarkdownFile(): Promise<OpenedFile | null> {
@@ -70,7 +85,9 @@ export async function openMarkdownFiles(): Promise<OpenedFile[]> {
 export async function createMarkdownFile(): Promise<OpenedFile | null> {
   if (!isTauri()) {
     // 浏览器/测试环境:直接给一份空白文档(不落盘)。
-    return { path: `mock-vault/${t('content.untitledFile')}`, content: '' }
+    const path = `mock-vault/${Date.now()}-${t('content.untitledFile')}`
+    await writeMarkdownFile(path, '', null)
+    return { path, content: '' }
   }
 
   const target = await save({
@@ -79,6 +96,7 @@ export async function createMarkdownFile(): Promise<OpenedFile | null> {
   })
   if (typeof target !== 'string') return null
 
-  await writeMarkdownFile(target, '')
+  const expected = await readMarkdownFileState(target)
+  await writeMarkdownFile(target, '', expected)
   return { path: target, content: '' }
 }

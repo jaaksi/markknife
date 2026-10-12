@@ -34,13 +34,20 @@ import { isMac } from '../utils/platform'
 import { StartPage } from './StartPage'
 import { useRecentFiles } from './useRecentFiles'
 import { useAppMenu } from './useAppMenu'
-import { markSavedTabs, saveTabsBeforeClose } from './tabSaving'
+import { createMarkdownWriteQueue, saveTabsBeforeClose } from './tabSaving'
+import {
+  applyEditorChange, applySavedContent, createOpenTab, replaceWithDiskContent, withExternalChange, type OpenTab,
+} from './fileChanges'
+import { useExternalFileChanges } from './useExternalFileChanges'
+import { ExternalFileBanner } from './ExternalFileBanner'
 import {
   basenameOf,
   createMarkdownFile,
   dirnameOf,
   openMarkdownFiles,
   readMarkdownFile,
+  readMarkdownFileState,
+  saveMarkdownCopy,
   writeMarkdownFile,
 } from './fileIo'
 
@@ -52,14 +59,6 @@ const SPLIT_VIEW_PREFETCH_DELAY_MS = 3000
 // 分栏模式(含 CodeMirror 整套源码编辑器)体积大、首屏用不到,拆出主包按需加载,缩短冷启动。
 const loadSplitView = () => import('./SplitView')
 const SplitView = lazy(() => loadSplitView().then((module) => ({ default: module.SplitView })))
-
-/** 一个打开的标签:路径 + 文件名 + 内存内容 + 未保存标记。 */
-interface OpenTab {
-  path: string
-  name: string
-  content: string
-  dirty: boolean
-}
 
 /**
  * 多标签 Markdown 查看 / 编辑应用外壳。
@@ -76,6 +75,12 @@ function MarkdownAppInner() {
   const [closeDialogOpen, setCloseDialogOpen] = useState(false)
   const [closeSaveError, setCloseSaveError] = useState<string | null>(null)
   const [isSavingBeforeClose, setIsSavingBeforeClose] = useState(false)
+  const [fileResolution, setFileResolution] = useState<{
+    kind: 'reload' | 'overwrite'; instanceId: number; path: string; diskContent: string | null
+  } | null>(null)
+  const [isResolvingFile, setIsResolvingFile] = useState(false)
+  const resolvingFileRef = useRef(false)
+  const pendingSavesRef = useRef(new Map<string, number>())
   const savingBeforeCloseRef = useRef(false)
   const flushEditorRef = useRef<(() => void) | null>(null)
   const registerEditorFlush = useCallback((flush: (() => void) | null) => {
@@ -151,10 +156,48 @@ function MarkdownAppInner() {
   // 关掉最后一个标签触发的关窗:窗口藏起来之后再清空标签(先清会在隐藏前闪一下起始页)。
   const clearTabsAfterHideRef = useRef(false)
 
-  // 保存指定标签(默认当前标签)。
+  const isFileSaving = useCallback((path: string) =>
+    resolvingFileRef.current || (pendingSavesRef.current.get(path) ?? 0) > 0, [])
+  const queuedSave = useMemo(() => createMarkdownWriteQueue(async (
+    path: string, content: string, request: { instanceId: number; expected?: string | null; translate: typeof t },
+  ) => {
+    const tab = tabsRef.current.find((tab) => tab.path === path && tab.instanceId === request.instanceId)
+    if (!tab) throw new Error(request.translate('app.toast.noFile'))
+    if (request.expected === undefined && tab.externalChange) throw new Error(request.translate('fileChange.saveBlocked'))
+    try {
+      await writeMarkdownFile(path, content, request.expected === undefined ? tab.diskContent : request.expected)
+      updateTabs((tabs) => tabs.map((current) => applySavedContent(current, tab, content)))
+    } catch (error) {
+      if (error && typeof error === 'object' && 'kind' in error && error.kind === 'conflict') {
+        const disk = 'content' in error && typeof error.content === 'string' ? error.content : null
+        updateTabs((tabs) => tabs.map((current) => current.instanceId === tab.instanceId
+          ? withExternalChange(current, disk === null ? { kind: 'missing' } : { kind: 'modified', content: disk })
+          : current,
+        ))
+        throw new Error(request.translate('fileChange.saveBlocked'))
+      }
+      if (error && typeof error === 'object' && 'message' in error) throw new Error(String(error.message))
+      throw error
+    }
+  }), [updateTabs])
+  const saveTabContent = useCallback(async (path: string, content: string, expected?: string | null) => {
+    const tab = tabsRef.current.find((tab) => tab.path === path)
+    if (!tab) throw new Error(t('app.toast.noFile'))
+    pendingSavesRef.current.set(path, (pendingSavesRef.current.get(path) ?? 0) + 1)
+    try {
+      await queuedSave(path, content, { instanceId: tab.instanceId, expected, translate: t })
+    } finally {
+      const remaining = (pendingSavesRef.current.get(path) ?? 1) - 1
+      if (remaining === 0) pendingSavesRef.current.delete(path)
+      else pendingSavesRef.current.set(path, remaining)
+    }
+  }, [queuedSave, t])
+  useExternalFileChanges({ tabsRef, updateTabs, flushEditor: flushEditorRef, isSaving: isFileSaving })
+
+  // 保存指定标签(默认当前标签)。自动保存成功时静默，失败仍提示。
   const doSave = useCallback(
-    async (targetPath?: string) => {
-      if (savingBeforeCloseRef.current) return
+    async (targetPath?: string, source: 'manual' | 'auto' = 'manual') => {
+      if (savingBeforeCloseRef.current || resolvingFileRef.current) return
       flushEditorRef.current?.()
       const path = targetPath ?? activePathRef.current
       const tab = path ? tabsRef.current.find((t) => t.path === path) : undefined
@@ -163,16 +206,17 @@ function MarkdownAppInner() {
         return
       }
       try {
-        await writeMarkdownFile(tab.path, tab.content)
-        updateTabs((prev) => markSavedTabs(prev, [tab]))
-        setSaveFeedback({ kind: 'saved', text: t('app.toast.saved') })
+        await saveTabContent(tab.path, tab.content)
+        if (source === 'manual' && tabsRef.current.find((current) => current.path === tab.path)?.dirty === false) {
+          setSaveFeedback({ kind: 'saved', text: t('app.toast.saved') })
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         console.error('[markdown-app] 保存失败:', error)
         setSaveFeedback({ kind: 'error', text: t('app.toast.saveFailed', { message }) })
       }
     },
-    [t, updateTabs],
+    [t, saveTabContent],
   )
 
   const withSavedTabsBeforeClose = useCallback(async (
@@ -180,7 +224,7 @@ function MarkdownAppInner() {
     onSaved: () => void | Promise<void>,
     inDialog = false,
   ) => {
-    if (savingBeforeCloseRef.current) return
+    if (savingBeforeCloseRef.current || resolvingFileRef.current) return
     savingBeforeCloseRef.current = true
     setIsSavingBeforeClose(true)
     if (inDialog) setCloseSaveError(null)
@@ -190,7 +234,7 @@ function MarkdownAppInner() {
         updateTabs,
         shouldClose,
         flushEditor: () => { flushEditorRef.current?.() },
-        write: writeMarkdownFile,
+        write: saveTabContent,
       })
       if (!result.canClose) {
         const message = result.failures.length > 0
@@ -217,7 +261,7 @@ function MarkdownAppInner() {
       savingBeforeCloseRef.current = false
       setIsSavingBeforeClose(false)
     }
-  }, [t, updateTabs])
+  }, [t, updateTabs, saveTabContent])
 
   // 在标签里打开一份内容:已打开则只激活(不重复、不覆盖正在编辑的内容),否则新增标签。
   const openInTab = useCallback(
@@ -225,7 +269,7 @@ function MarkdownAppInner() {
       updateTabs((prev) =>
         prev.some((tab) => tab.path === path)
           ? prev
-          : [...prev, { path, name: basenameOf(path), content, dirty: false }],
+          : [...prev, createOpenTab(path, basenameOf(path), content)],
       )
       setActivePath(path)
       // 打开文件默认进入「所见即所得」模式。
@@ -234,6 +278,77 @@ function MarkdownAppInner() {
     },
     [recordRecent, updateTabs],
   )
+
+  const requestFileResolution = useCallback((instanceId: number, kind: 'reload' | 'overwrite') => {
+    if (savingBeforeCloseRef.current || resolvingFileRef.current) return
+    flushEditorRef.current?.()
+    const tab = tabsRef.current.find((tab) => tab.instanceId === instanceId)
+    const change = tab?.externalChange
+    if (!tab || !change || change.kind === 'unreadable' || isFileSaving(tab.path)) return
+    if (kind === 'reload' && change.kind !== 'modified') return
+    setActivePath(tab.path)
+    setFileResolution({
+      kind, instanceId, path: tab.path, diskContent: change.kind === 'modified' ? change.content : null,
+    })
+  }, [isFileSaving])
+
+  const confirmFileResolution = useCallback(async () => {
+    if (!fileResolution || resolvingFileRef.current || savingBeforeCloseRef.current) return
+    resolvingFileRef.current = true
+    setIsResolvingFile(true)
+    try {
+      flushEditorRef.current?.()
+      const snapshot = tabsRef.current.find((tab) => tab.instanceId === fileResolution.instanceId
+        && tab.path === fileResolution.path)
+      if (!snapshot) { setFileResolution(null); return }
+      if (fileResolution.kind === 'overwrite') {
+        await saveTabContent(snapshot.path, snapshot.content, fileResolution.diskContent)
+        setSaveFeedback({ kind: 'saved', text: t('app.toast.saved') })
+      } else {
+        const disk = await readMarkdownFileState(snapshot.path)
+        flushEditorRef.current?.()
+        const current = tabsRef.current.find((tab) => tab.instanceId === snapshot.instanceId)
+        if (disk === null || disk !== fileResolution.diskContent || current?.content !== snapshot.content) {
+          if (current) updateTabs((tabs) => tabs.map((tab) => tab.instanceId === snapshot.instanceId
+            ? withExternalChange(tab, disk === null ? { kind: 'missing' } : { kind: 'modified', content: disk })
+            : tab,
+          ))
+          throw new Error(t('fileChange.changedAgain'))
+        }
+        updateTabs((tabs) => tabs.map((tab) => tab.instanceId === snapshot.instanceId
+          ? replaceWithDiskContent(tab, disk) : tab,
+        ))
+      }
+      setFileResolution(null)
+    } catch (error) {
+      setFileResolution(null)
+      const message = error instanceof Error ? error.message : String(error)
+      setSaveFeedback({ kind: 'error', text: t('app.toast.saveFailed', { message }) })
+    } finally {
+      resolvingFileRef.current = false
+      setIsResolvingFile(false)
+    }
+  }, [fileResolution, saveTabContent, t, updateTabs])
+
+  const saveFileCopy = useCallback(async (instanceId: number) => {
+    if (resolvingFileRef.current || savingBeforeCloseRef.current) return
+    resolvingFileRef.current = true
+    setIsResolvingFile(true)
+    try {
+      flushEditorRef.current?.()
+      const tab = tabsRef.current.find((tab) => tab.instanceId === instanceId)
+      if (!tab) return
+      const name = t('fileChange.copyName', { name: tab.name.replace(/\.(?:md|markdown)$/i, '') })
+      const copy = await saveMarkdownCopy(name, tab.content, tab.path)
+      if (copy) openInTab(copy.path, copy.content)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setSaveFeedback({ kind: 'error', text: t('app.toast.saveFailed', { message }) })
+    } finally {
+      resolvingFileRef.current = false
+      setIsResolvingFile(false)
+    }
+  }, [openInTab, t])
 
   // 载入指定路径(系统打开方式、双击、历史记录均复用此入口)。
   const loadPath = useCallback(
@@ -329,8 +444,7 @@ function MarkdownAppInner() {
       const tab = tabsRef.current.find((x) => x.path === path)
       if (tab?.dirty) {
         try {
-          await writeMarkdownFile(tab.path, tab.content)
-          updateTabs((prev) => markSavedTabs(prev, [tab]))
+          await saveTabContent(tab.path, tab.content)
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           console.error('[markdown-app] 拆出前保存失败:', error)
@@ -345,7 +459,7 @@ function MarkdownAppInner() {
         console.error('[markdown-app] 在新窗口打开失败:', error)
       }
     },
-    [closeTab, t, updateTabs],
+    [closeTab, t, saveTabContent],
   )
 
   // 右键菜单「在访达中显示」。
@@ -370,7 +484,7 @@ function MarkdownAppInner() {
 
   // 关闭其他:全部保存成功才移除目标标签，保存失败或期间有新修改则全部保留。
   const handleCloseOthers = useCallback(async (keepPath: string) => {
-    if (savingBeforeCloseRef.current) return
+    if (savingBeforeCloseRef.current || resolvingFileRef.current) return
     flushEditorRef.current?.()
     if (!tabsRef.current.some((tab) => tab.path === keepPath)) return
     const targetPaths = new Set(tabsRef.current.filter((tab) => tab.path !== keepPath).map((tab) => tab.path))
@@ -449,24 +563,24 @@ function MarkdownAppInner() {
   useAppMenu({ recents: recentFiles.recents, onOpenPath: loadPath, onClear: recentFiles.clear })
 
   // 编辑某标签内容 → 更新该标签并标记未保存。
-  const handleTabChange = useCallback((path: string, content: string) => {
+  const handleTabChange = useCallback((path: string, content: string, source: Pick<OpenTab, 'instanceId' | 'reloadRevision'>) => {
     updateTabs((prev) =>
       prev.map((tab) =>
-        tab.path === path ? (tab.content === content ? tab : { ...tab, content, dirty: true }) : tab,
+        tab.path === path ? applyEditorChange(tab, content, source) : tab,
       ),
     )
   }, [updateTabs])
 
   // 防抖自动保存:对所有未保存标签落盘(后台标签改过也能存)。
   useEffect(() => {
-    if (isSavingBeforeClose) return
-    const dirtyTabs = tabs.filter((tab) => tab.dirty)
+    if (isSavingBeforeClose || isResolvingFile) return
+    const dirtyTabs = tabs.filter((tab) => tab.dirty && !tab.externalChange)
     if (dirtyTabs.length === 0) return
     const handle = setTimeout(() => {
-      dirtyTabs.forEach((tab) => void doSave(tab.path))
+      dirtyTabs.forEach((tab) => void doSave(tab.path, 'auto'))
     }, AUTOSAVE_DEBOUNCE_MS)
     return () => clearTimeout(handle)
-  }, [tabs, doSave, isSavingBeforeClose])
+  }, [tabs, doSave, isSavingBeforeClose, isResolvingFile])
 
   // 全局快捷键:可在设置里自定义的动作走 comboLookup 分发;Cmd/Ctrl+, 打开设置为固定键。
   useEffect(() => {
@@ -556,7 +670,7 @@ function MarkdownAppInner() {
       const hideInsteadOfClose = isMac() && win.label === 'main'
       return win
         .onCloseRequested(async (event) => {
-          if (savingBeforeCloseRef.current && !closeConfirmedRef.current) {
+          if ((savingBeforeCloseRef.current || resolvingFileRef.current) && !closeConfirmedRef.current) {
             event.preventDefault()
             return
           }
@@ -622,6 +736,8 @@ function MarkdownAppInner() {
 
   // 无文件 / 无标题不显示目录。
   const showToc = Boolean(filePath) && hasHeadings
+  const externalTab = activeTab?.externalChange ? activeTab : tabs.find((tab) => tab.externalChange)
+  const resolutionTab = tabs.find((tab) => tab.instanceId === fileResolution?.instanceId)
   const tocPanel =
     showToc && !tocCollapsed ? (
       <TocPanel
@@ -658,6 +774,16 @@ function MarkdownAppInner() {
       />
       {/* 启动静默检查发现新版时的顶部更新横幅(非模态,不打断编辑) */}
       <UpdateBanner appUpdate={appUpdate} />
+      {externalTab && (
+        <ExternalFileBanner
+          tab={externalTab}
+          busy={isSavingBeforeClose || isResolvingFile}
+          onActivate={() => setActivePath(externalTab.path)}
+          onReload={() => requestFileResolution(externalTab.instanceId, 'reload')}
+          onSaveCopy={() => void saveFileCopy(externalTab.instanceId)}
+          onOverwrite={() => requestFileResolution(externalTab.instanceId, 'overwrite')}
+        />
+      )}
       <div className="relative flex min-h-0 flex-1">
         {filePath && activeTab ? (
           <>
@@ -671,9 +797,10 @@ function MarkdownAppInner() {
               vaultPath={vaultPath}
               splitOrientation={splitOrientation}
               onTabChange={handleTabChange}
-              onActiveChange={(content) => handleTabChange(filePath, content)}
+              onActiveChange={(content) => handleTabChange(filePath, content, activeTab)}
               onSave={() => void doSave()}
               onRegisterFlush={registerEditorFlush}
+              reloadRevision={activeTab.reloadRevision}
             />
             {tocPrefs.position === 'right' && tocPanel}
             {showToc && tocCollapsed && (
@@ -728,6 +855,27 @@ function MarkdownAppInner() {
       )}
 
       {/* 未保存改动时关闭窗口的确认弹窗 */}
+      <Dialog open={fileResolution !== null} onOpenChange={(open) => {
+        if (!open && !resolvingFileRef.current) setFileResolution(null)
+      }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogTitle>{t(fileResolution?.kind === 'reload' ? 'fileChange.reloadTitle' : 'fileChange.overwriteTitle')}</DialogTitle>
+          <DialogDescription>
+            {t(fileResolution?.kind === 'reload' ? 'fileChange.reloadDescription' : 'fileChange.overwriteDescription', {
+              name: resolutionTab?.name ?? '',
+            })}
+          </DialogDescription>
+          <DialogFooter>
+            <Button variant="ghost" disabled={isResolvingFile} onClick={() => setFileResolution(null)}>
+              {t('app.close.cancel')}
+            </Button>
+            <Button disabled={isResolvingFile} onClick={() => void confirmFileResolution()}>
+              {t(isResolvingFile ? 'fileChange.busy'
+                : fileResolution?.kind === 'reload' ? 'fileChange.reload' : 'fileChange.overwrite')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={closeDialogOpen} onOpenChange={(open) => {
         if (savingBeforeCloseRef.current) return
         setCloseDialogOpen(open)
@@ -835,18 +983,20 @@ function MarkdownWorkspace({
   onActiveChange,
   onSave,
   onRegisterFlush,
+  reloadRevision,
 }: {
   mode: AppMode
-  tabs: ReadonlyArray<{ path: string; content: string }>
+  tabs: ReadonlyArray<OpenTab>
   activePath: string
   markdown: string
   filePath: string
   vaultPath?: string
   splitOrientation: SplitOrientation
-  onTabChange: (path: string, content: string) => void
+  onTabChange: (path: string, content: string, source: Pick<OpenTab, 'instanceId' | 'reloadRevision'>) => void
   onActiveChange: (content: string) => void
   onSave: () => void
   onRegisterFlush: (flush: (() => void) | null) => void
+  reloadRevision: number
 }) {
   if (mode === 'view') {
     return <MarkdownReadonlyView key={activePath} markdown={markdown} filePath={filePath} vaultPath={vaultPath} />
@@ -867,6 +1017,16 @@ function MarkdownWorkspace({
     )
   }
   return (
-    <MarkdownEditableView tabs={tabs} activePath={activePath} vaultPath={vaultPath} onChange={onTabChange} onRegisterFlush={onRegisterFlush} />
+    <MarkdownEditableView
+      key={reloadRevision}
+      tabs={tabs}
+      activePath={activePath}
+      vaultPath={vaultPath}
+      onChange={(path, content) => {
+        const source = tabs.find((tab) => tab.path === path)
+        if (source) onTabChange(path, content, source)
+      }}
+      onRegisterFlush={onRegisterFlush}
+    />
   )
 }

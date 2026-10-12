@@ -10,6 +10,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint . --max-warnings=0",
     "test:tab-saving": "node --test scripts/test-tab-saving.mjs",
+    "test:files": "node --test scripts/test-tab-saving.mjs scripts/test-file-changes.mjs",
     "l10n:validate": "node scripts/validate-locales.mjs",
     "preview": "vite preview",
     "tauri": "tauri"

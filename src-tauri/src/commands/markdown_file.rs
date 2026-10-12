@@ -20,10 +20,20 @@ pub fn read_markdown_file(app_handle: tauri::AppHandle, path: String) -> Result<
     Ok(content)
 }
 
-/// 写入单个 Markdown 文件（绝对路径）。父目录不存在时创建，带写入重试。
+/// 检查当前磁盘内容；文件被删除时返回 None。
 #[tauri::command]
-pub fn write_markdown_file(path: String, content: String) -> Result<(), String> {
-    vault::save_note_content(&path, &content)
+pub fn read_markdown_file_state(path: String) -> Result<Option<String>, String> {
+    vault::read_markdown_file_state(&path)
+}
+
+/// 校验磁盘版本后保存，发生冲突时保留文件并返回最新内容；None 只允许新建。
+#[tauri::command]
+pub fn write_markdown_file(
+    path: String,
+    content: String,
+    expected_content: Option<String>,
+) -> Result<(), vault::MarkdownWriteError> {
+    vault::save_markdown_file_checked(&path, &content, expected_content.as_deref())
 }
 
 /// 暂存「由系统打开方式 / 双击 / 命令行」传入、但前端尚未就绪时的待打开文件路径。

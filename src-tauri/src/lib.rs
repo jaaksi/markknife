@@ -263,6 +263,7 @@ macro_rules! app_invoke_handler {
     () => {
         tauri::generate_handler![
             commands::read_markdown_file,
+            commands::read_markdown_file_state,
             commands::write_markdown_file,
             commands::get_note_content,
             commands::validate_note_content,

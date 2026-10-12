@@ -7,11 +7,13 @@ export interface SaveableTab {
 type WriteMarkdown = (path: string, content: string) => Promise<void>
 
 /** 同一文件的自动保存与关闭前保存按顺序写入，失败不阻断后续重试。 */
-export function createMarkdownWriteQueue(write: WriteMarkdown): WriteMarkdown {
+export function createMarkdownWriteQueue<TArgs extends unknown[]>(
+  write: (path: string, content: string, ...args: TArgs) => Promise<void>,
+): (path: string, content: string, ...args: TArgs) => Promise<void> {
   const pending = new Map<string, Promise<void>>()
-  return (path, content) => {
+  return (path, content, ...args) => {
     const previous = pending.get(path) ?? Promise.resolve()
-    const next = previous.catch(() => {}).then(() => write(path, content))
+    const next = previous.catch(() => {}).then(() => write(path, content, ...args))
     pending.set(path, next)
     const cleanup = () => {
       if (pending.get(path) === next) pending.delete(path)

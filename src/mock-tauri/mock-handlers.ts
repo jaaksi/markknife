@@ -468,7 +468,12 @@ export const mockHandlers: Record<string, (args: any) => any> = {
   sync_note_title: () => false,
   get_note_content: (args: { path: string }) => MOCK_CONTENT[args.path] ?? '',
   read_markdown_file: (args: { path: string }) => readMockMarkdownFile(args.path),
-  write_markdown_file: (args: { path: string; content: string }) => {
+  read_markdown_file_state: (args: { path: string }) => mockMarkdownFiles[args.path] ?? MOCK_CONTENT[args.path] ?? null,
+  write_markdown_file: (args: { path: string; content: string; expectedContent: string | null }) => {
+    const current = mockMarkdownFiles[args.path] ?? MOCK_CONTENT[args.path] ?? null
+    if (current !== args.expectedContent && !(args.expectedContent !== null && current === args.content)) {
+      throw { kind: 'conflict', content: current }
+    }
     mockMarkdownFiles[args.path] = args.content
   },
   // 浏览器/测试环境不做真实更新：检查恒返回「无更新」。
