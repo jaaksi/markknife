@@ -120,14 +120,16 @@ function MarkdownAppInner() {
   const markdown = activeTab?.content ?? ''
   const vaultPath = filePath ? dirnameOf(filePath) : undefined
 
-  const toc = useTocHeadings(`${mode}-${filePath ?? ''}`)
+  // 外部重载会重建编辑器，目录和搜索也必须重新绑定新的文档表面。
+  const surfaceSignature = JSON.stringify([mode, filePath, activeTab?.instanceId, activeTab?.reloadRevision])
+  const toc = useTocHeadings(surfaceSignature)
   const hasHeadings = toc.headings.length > 0
 
   // 文档内查找(Cmd+F):仅在有文件时可用;搜索富文本渲染区,签名随模式/文件变化。
   const [searchOpen, setSearchOpen] = useState(false)
   const search = useDocumentSearch({
     active: searchOpen && Boolean(filePath),
-    signature: `${mode}-${filePath ?? ''}`,
+    signature: surfaceSignature,
   })
   // 切换 / 重开文件(activePath 变化)、标题首次出现、或改默认设置,都回到目录默认状态
   // (不记忆运行时临时收起)。用「记录上次触发键 + 渲染期重置」取代 effect 内 setState。

@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { EDITOR_SCROLL_AREA_SELECTOR as SCROLL_AREA_SELECTOR, observeEditorSurface } from './observeEditorSurface'
 // 查找高亮的 ::highlight() 样式单独成文件,避免走 index.css 的 Tailwind/lightningcss 优化(打包告警)。
 import './searchHighlight.css'
 
-/** 富文本表面的滚动容器(查看 / 所见即所得 / 分栏预览共用),与 useTocHeadings 一致。 */
-const SCROLL_AREA_SELECTOR = '.editor-scroll-area'
 /** 实际内容容器:把搜索范围限定在正文,排除滚动容器上的内边距等。 */
 const CONTENT_SELECTOR = '.editor-content-wrapper'
 /** CSS Custom Highlight 名称:全部匹配 / 当前匹配。 */
@@ -132,40 +131,47 @@ export function useDocumentSearch({ active, signature }: { active: boolean; sign
       return
     }
 
-    // resetActive=true:查询/容器变,重置到首个匹配并滚动;false:内容变(编辑),保留当前位置只更新计数。
-    const recompute = (resetActive: boolean) => {
-      const root = findRoot()
-      if (!root) {
+    return observeEditorSurface((area) => {
+      if (!area) {
         resetEmpty()
         return
       }
-      const ranges = collectRanges(root, query.trim())
-      rangesRef.current = ranges
-      setTotal(ranges.length)
-      let nextActive = resetActive ? 0 : activeIndexRef.current
-      if (nextActive >= ranges.length) nextActive = ranges.length > 0 ? ranges.length - 1 : 0
-      activeIndexRef.current = nextActive
-      setActiveIndex(nextActive)
-      applyHighlights()
-      if (resetActive) scrollActiveIntoView()
-    }
 
-    const queryTimer = setTimeout(() => recompute(true), RECOMPUTE_DEBOUNCE_MS)
+      // resetActive=true:查询/容器变,重置到首个匹配并滚动;false:内容变(编辑),保留当前位置只更新计数。
+      const recompute = (resetActive: boolean) => {
+        const root = findRoot()
+        if (!root) {
+          resetEmpty()
+          return
+        }
+        const ranges = collectRanges(root, query.trim())
+        rangesRef.current = ranges
+        setTotal(ranges.length)
+        let nextActive = resetActive ? 0 : activeIndexRef.current
+        if (nextActive >= ranges.length) nextActive = ranges.length > 0 ? ranges.length - 1 : 0
+        activeIndexRef.current = nextActive
+        setActiveIndex(nextActive)
+        applyHighlights()
+        if (resetActive) scrollActiveIntoView()
+      }
 
-    // 内容变化(所见即所得编辑)→ 防抖重算,保留当前位置。
-    const root = findRoot()
-    let moTimer: ReturnType<typeof setTimeout> | undefined
-    const observer = new MutationObserver(() => {
-      clearTimeout(moTimer)
-      moTimer = setTimeout(() => recompute(false), RECOMPUTE_DEBOUNCE_MS)
+      const queryTimer = setTimeout(() => recompute(true), RECOMPUTE_DEBOUNCE_MS)
+
+      // 内容变化(所见即所得编辑)→ 防抖重算,保留当前位置。
+      const root = findRoot()
+      let moTimer: ReturnType<typeof setTimeout> | undefined
+      const observer = new MutationObserver(() => {
+        clearTimeout(moTimer)
+        moTimer = setTimeout(() => recompute(false), RECOMPUTE_DEBOUNCE_MS)
+      })
+      if (root) observer.observe(root, { childList: true, subtree: true, characterData: true })
+
+      return () => {
+        clearTimeout(queryTimer)
+        clearTimeout(moTimer)
+        observer.disconnect()
+      }
     })
-    if (root) observer.observe(root, { childList: true, subtree: true, characterData: true })
-
-    return () => {
-      clearTimeout(queryTimer)
-      clearTimeout(moTimer)
-      observer.disconnect()
-    }
   }, [active, query, signature, applyHighlights, clearHighlights, scrollActiveIntoView])
 
   // 关闭搜索时清掉高亮。

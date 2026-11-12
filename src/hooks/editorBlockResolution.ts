@@ -1,8 +1,10 @@
 import type { useCreateBlockNote } from '@blocknote/react'
+import { markdownToHTML } from '@blocknote/core'
 import { preProcessMathMarkdown, injectMathInBlocks } from '../utils/mathMarkdown'
 import { injectDurableEditorMarkdownBlocks, preProcessDurableEditorMarkdown } from '../utils/editorDurableMarkdown'
 import { injectMarkdownHighlightsInBlocks } from '../utils/markdownHighlightMarkdown'
 import { normalizeBareImageUrls, resolveImageUrls } from '../utils/vaultImages'
+import { normalizeBlockquoteHtmlBreaks } from '../utils/blockquoteMarkdown'
 import { preProcessHtmlImageMarkdown } from '../utils/htmlImageMarkdown'
 import { preProcessSingleTildeStrikethrough } from '../utils/markdownStrikethrough'
 import {
@@ -132,7 +134,9 @@ async function parseMarkdownBlocks(
   editor: ReturnType<typeof useCreateBlockNote>,
   preprocessed: PreprocessedMarkdown,
 ): Promise<EditorBlocks> {
-  const result = editor.tryParseMarkdownToBlocks(preprocessed)
+  const result = preprocessed.includes('>')
+    ? editor.tryParseHTMLToBlocks(normalizeBlockquoteHtmlBreaks(markdownToHTML(preprocessed)))
+    : editor.tryParseMarkdownToBlocks(preprocessed)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tryParseMarkdownToBlocks returns sync or async BlockNote blocks
   if (result && typeof (result as any).then === 'function') {
     return (result as unknown as Promise<EditorBlocks>)

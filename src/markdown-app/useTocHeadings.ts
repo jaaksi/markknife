@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { observeEditorSurface } from './observeEditorSurface'
 
 /** 目录中的一条标题。 */
 export interface TocHeading {
@@ -6,8 +7,6 @@ export interface TocHeading {
   text: string
 }
 
-/** 富文本表面的滚动容器(查看 / 所见即所得 / 分栏预览共用)。 */
-const SCROLL_AREA_SELECTOR = '.editor-scroll-area'
 /** BlockNote 把标题块渲染为带该属性的元素,据此定位标题。 */
 const HEADING_SELECTOR = '[data-content-type="heading"]'
 /** 判定「当前章节」时,标题距容器顶部的容差。 */
@@ -32,7 +31,7 @@ export function useTocHeadings(signature: string): UseTocHeadingsResult {
   const [activeIndex, setActiveIndex] = useState(0)
   const elementsRef = useRef<HTMLElement[]>([])
   const scrollAreaRef = useRef<HTMLElement | null>(null)
-  // 点击目录项触发的程序化平滑滚动期间锁定高亮,避免滚动事件把高亮抢回中途标题。
+  // 点击目录项触发的程序化滚动期间锁定高亮,避免滚动事件把高亮抢回中途标题。
   const lockedRef = useRef(false)
   const lockTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   // 切换(模式 / 文件)后的过渡保护期标志:期间提取到空标题不清空目录,避免新表面异步渲染时面板闪烁。
@@ -47,11 +46,11 @@ export function useTocHeadings(signature: string): UseTocHeadingsResult {
     setActiveIndex(0)
   }
 
-  useEffect(() => {
+  useEffect(() => observeEditorSurface((scrollArea) => {
     // 表面重挂载,清掉残留的滚动锁;并进入「切换过渡保护期」(见下方 rebuild)。
     lockedRef.current = false
+    clearTimeout(lockTimerRef.current)
     settledRef.current = false
-    const scrollArea = document.querySelector(SCROLL_AREA_SELECTOR) as HTMLElement | null
     scrollAreaRef.current = scrollArea
 
     // 从当前滚动容器重建标题列表(集中走此函数,不在 effect 体内直接 setState)。
@@ -127,7 +126,7 @@ export function useTocHeadings(signature: string): UseTocHeadingsResult {
       scrollRaf = requestAnimationFrame(measureActive)
     }
     scrollArea.addEventListener('scroll', onScroll, { passive: true })
-    // 平滑滚动结束即解锁高亮(不支持 scrollend 的环境由 scrollTo 里的定时器兜底)。
+    // 滚动结束即解锁高亮(不支持 scrollend 的环境由 scrollTo 里的定时器兜底)。
     const onScrollEnd = () => {
       lockedRef.current = false
     }
@@ -142,18 +141,20 @@ export function useTocHeadings(signature: string): UseTocHeadingsResult {
       scrollArea.removeEventListener('scroll', onScroll)
       scrollArea.removeEventListener('scrollend', onScrollEnd)
     }
-  }, [signature])
+  }), [signature])
 
   const scrollTo = useCallback((index: number) => {
     const el = elementsRef.current[index]
     const scrollArea = scrollAreaRef.current
-    if (!el || !scrollArea) return
+    if (!el || !scrollArea?.isConnected || !scrollArea.contains(el)) return
     const top =
       el.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top + scrollArea.scrollTop - 12
-    // 锁定高亮到目标项,直到平滑滚动结束(scrollend / 定时器兜底),避免高亮沿途闪动。
+    // 锁定高亮到目标项,直到滚动结束(scrollend / 定时器兜底),避免高亮沿途闪动。
     lockedRef.current = true
     setActiveIndex(index)
-    scrollArea.scrollTo({ top, behavior: 'smooth' })
+    // 分栏的双向滚动联动会打断平滑滚动，直接定位以保证能到达目标标题。
+    const behavior = scrollArea.closest('[data-markdown-split-view]') ? 'auto' : 'smooth'
+    scrollArea.scrollTo({ top, behavior })
     clearTimeout(lockTimerRef.current)
     lockTimerRef.current = setTimeout(() => {
       lockedRef.current = false

@@ -44,7 +44,7 @@ export function SplitView({
   const [left, right] = orientation === 'source-left' ? [source, preview] : [preview, source]
 
   return (
-    <div ref={rootRef} className="flex flex-1 min-h-0 min-w-0">
+    <div ref={rootRef} data-markdown-split-view="true" className="flex flex-1 min-h-0 min-w-0">
       {left}
       <div className="w-px shrink-0 bg-border" aria-hidden="true" />
       {right}
